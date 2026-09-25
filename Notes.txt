@@ -1,0 +1,19 @@
+﻿Next Chat
+
+BroswerManager.cs
+
+Method: private static IWebDriver AttachToExistingSession(ExistingWebDriverSession session)
+
+
+
+following line:
+
+var remote = new RemoteWebDriver(session.ServerUri, requestedCapabilities, TimeSpan.FromSeconds(10));
+
+
+
+has following error:
+
+Severity	Code	Description	Project	File	Line	Suppression State
+
+Error (active)	CS0103	The name 'requestedCapabilities' does not exist in the current context	SeleniumLocatorInspector	C:\Projects\SeleniumLocatorInspector_v4\SeleniumLocatorInspector\Browser\BrowserManager.cs	91	
