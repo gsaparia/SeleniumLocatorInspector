@@ -8,6 +8,8 @@ public sealed class LocatorResult
     public string Text { get; set; } = "";
     public string Css { get; set; } = "";
     public string XPath { get; set; } = "";
+    public bool Visible { get; set; }
+    public bool Clickable { get; set; }
     public bool CssUnique { get; set; }
     public bool XPathUnique { get; set; }
     public bool InsideShadowDom { get; set; }
@@ -15,6 +17,7 @@ public sealed class LocatorResult
     public List<string> ShadowPath { get; set; } = [];
     public List<string> FramePath { get; set; } = [];
     public List<LocatorCandidate> Candidates { get; set; } = [];
+    public List<LocatorCandidate> DetailedCandidates { get; set; } = [];
     public LocatorStability Stability { get; set; } = new();
     public string SeleniumCode { get; set; } = "";
 
@@ -27,9 +30,13 @@ public sealed class LocatorResult
 public sealed class LocatorCandidate
 {
     public string Type { get; set; } = "";
+    public string Category { get; set; } = "General";
+    public string Rationale { get; set; } = "";
     public string Value { get; set; } = "";
     public int Score { get; set; }
     public bool Unique { get; set; }
+    public bool Visible { get; set; }
+    public bool Clickable { get; set; }
 }
 
 public sealed class LocatorStability

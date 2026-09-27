@@ -61,6 +61,15 @@ public sealed class LocatorInspector
         }
     }
 
+    public int HighlightLocator(string locator, string inspectorScript)
+    {
+        if (string.IsNullOrWhiteSpace(locator)) return 0;
+        // Reinstall after navigation. Pass the locator as an argument, never JS source.
+        _js.ExecuteScript(inspectorScript);
+        return Convert.ToInt32(_js.ExecuteScript(
+            "return window.__seleniumLocatorInspector.highlightLocator(arguments[0]);", locator));
+    }
+
     public LocatorResult? GetSelectedResult()
     {
         var json = _js.ExecuteScript(

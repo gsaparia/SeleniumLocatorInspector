@@ -113,12 +113,12 @@ public sealed class BrowserManager : IDisposable
         // used here because Selenium .NET does not expose an official attach-to-
         // existing-session API for an already-created local driver session.
         var type = typeof(WebDriver);
-        var field = type.GetProperty("SessionId", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        var field = type.GetField("sessionId", BindingFlags.Instance | BindingFlags.NonPublic);
 
         if (field == null)
         {
             // Older/newer Selenium builds may keep it on RemoteWebDriver.
-            field = typeof(RemoteWebDriver).GetProperty("sessionId", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            field = typeof(RemoteWebDriver).GetField("sessionId", BindingFlags.Instance | BindingFlags.NonPublic);
         }
 
         if (field == null)
@@ -129,21 +129,21 @@ public sealed class BrowserManager : IDisposable
 
     private static IWebDriver CreateEdge()
     {
-        var options = new EdgeOptions();
+        var options = new EdgeOptions { UseWebSocketUrl = true };
         options.AddArgument("--disable-popup-blocking");
         return new EdgeDriver(options);
     }
 
     private static IWebDriver CreateChrome()
     {
-        var options = new ChromeOptions();
+        var options = new ChromeOptions { UseWebSocketUrl = true };
         options.AddArgument("--disable-popup-blocking");
         return new ChromeDriver(options);
     }
 
     private static IWebDriver CreateFirefox()
     {
-        var options = new FirefoxOptions();
+        var options = new FirefoxOptions { UseWebSocketUrl = true };
         return new FirefoxDriver(options);
     }
 

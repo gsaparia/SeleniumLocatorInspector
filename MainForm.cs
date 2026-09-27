@@ -2,6 +2,7 @@ using System.Text;
 using OpenQA.Selenium;
 using SeleniumLocatorInspector.Browser;
 using SeleniumLocatorInspector.Inspector;
+using SeleniumLocatorInspector.Network;
 
 namespace SeleniumLocatorInspector;
 
@@ -16,6 +17,8 @@ public sealed class MainForm : Form
     private readonly Button _hookButton = new();
     private readonly Button _pickButton = new();
     private readonly Button _rectangleButton = new();
+    private readonly Button _networkButton = new();
+    private NetworkTrafficForm? _networkForm;
     private readonly Button _stopButton = new();
 
     private readonly TextBox _elementText = new();
@@ -40,14 +43,14 @@ public sealed class MainForm : Form
     {
         _inspectorScript = LoadInspectorScript();
 
-        Text = "Saparia : Selenium Locator Inspector v4";
+        Text = "Selenium Locator Inspector";
         Width = 1250;
         Height = 900;
         StartPosition = FormStartPosition.CenterScreen;
 
         BuildUi();
 
-        FormClosed += (_, _) => _browser.Dispose();
+        FormClosed += (_, _) => { _networkForm?.Close(); _browser.Dispose(); };
 
         var timer = new System.Windows.Forms.Timer
         {
@@ -119,11 +122,13 @@ public sealed class MainForm : Form
         ConfigureButton(_pickButton, "🎯 Pick Element", PickElement);
         ConfigureButton(_rectangleButton, "▭ Select Rectangle", SelectRectangle);
         ConfigureButton(_stopButton, "Stop", StopBrowser);
+        ConfigureButton(_networkButton, "Analyse Network Traffic", AnalyseNetworkTraffic);
 
         buttons.Controls.Add(_launchButton);
         buttons.Controls.Add(_hookButton);
         buttons.Controls.Add(_pickButton);
         buttons.Controls.Add(_rectangleButton);
+        buttons.Controls.Add(_networkButton);
         buttons.Controls.Add(_stopButton);
 
         root.Controls.Add(buttons, 0, 1);
@@ -274,7 +279,11 @@ public sealed class MainForm : Form
             SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
+        _candidateList.Columns.Add(new DataGridViewTextBoxColumn { Name = "Visible", HeaderText = "Visible", Width = 65, SortMode = DataGridViewColumnSortMode.NotSortable });
+        _candidateList.Columns.Add(new DataGridViewTextBoxColumn { Name = "Clickable", HeaderText = "Clickable", Width = 75, SortMode = DataGridViewColumnSortMode.NotSortable });
+
         _candidateList.CellClick += CandidateListCellClick;
+        _candidateList.CellDoubleClick += (_, e) => { if (e.RowIndex >= 0) ShowLocatorAnalysis(_candidateList.Rows[e.RowIndex].Tag as LocatorResult); };
         _candidateList.CellMouseDown += CandidateListCellMouseDown;
         _candidateList.KeyDown += CandidateListKeyDown;
 
@@ -282,6 +291,7 @@ public sealed class MainForm : Form
         _gridMenu.Items.Add("Copy XPath", null, (_, _) => CopyGridValue(6));
         _gridMenu.Items.Add("Copy Best Locator", null, (_, _) => CopyGridBestLocator());
         _gridMenu.Items.Add("Copy Selenium C#", null, (_, _) => CopyGridSelenium());
+        _gridMenu.Items.Add("Show Locator Analysis", null, (_, _) => ShowLocatorAnalysis(GetGridResult()));
         _candidateList.ContextMenuStrip = _gridMenu;
     }
 
@@ -359,6 +369,7 @@ public sealed class MainForm : Form
 
     private void HookToWebDriver(object? sender, EventArgs e)
     {
+        _networkForm?.Close();
         try
         {
             if (_browser.HookToFirstExistingDriver(out var session, out var message))
@@ -399,6 +410,7 @@ public sealed class MainForm : Form
 
     private void LaunchBrowser(object? sender, EventArgs e)
     {
+        _networkForm?.Close();
         try
         {
             var type = _browserCombo.SelectedIndex switch
@@ -463,8 +475,21 @@ public sealed class MainForm : Form
         return false;
     }
 
+    private void AnalyseNetworkTraffic(object? sender, EventArgs e)
+    {
+        if (!EnsureBrowser()) return;
+        if (_networkForm is { IsDisposed: false })
+        {
+            _networkForm.Activate();
+            return;
+        }
+        _networkForm = new NetworkTrafficForm(_browser.Driver!);
+        _networkForm.Show(this);
+    }
+
     private void StopBrowser(object? sender, EventArgs e)
     {
+        _networkForm?.Close();
         _inspector?.StopPicker();
         _browser.Stop();
         _inspector = null;
@@ -590,7 +615,9 @@ public sealed class MainForm : Form
                 score,
                 unique,
                 result.Css,
-                result.XPath);
+                result.XPath,
+                result.Visible ? "Yes" : "No",
+                result.Clickable ? "Yes" : "No");
 
             _candidateList.Rows[rowIndex].Tag = result;
         }
@@ -601,6 +628,61 @@ public sealed class MainForm : Form
         if (string.IsNullOrWhiteSpace(value)) return "";
         var compact = value.Replace("\r", " ").Replace("\n", " ").Trim();
         return compact.Length <= max ? compact : compact[..max] + "…";
+    }
+
+    private void ShowLocatorAnalysis(LocatorResult? result)
+    {
+        if (result == null) return;
+        using var dialog = new Form
+        {
+            Text = $"Locator Analysis — <{result.TagName}>",
+            Width = 1200,
+            Height = 650,
+            StartPosition = FormStartPosition.CenterParent,
+            MinimizeBox = false,
+            MaximizeBox = true
+        };
+        var grid = new DataGridView
+        {
+            Dock = DockStyle.Fill,
+            ReadOnly = true,
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            MultiSelect = false,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            RowHeadersVisible = false,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
+            ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText
+        };
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Score", Width = 65 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Unique", Width = 65 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Visible", Width = 65 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Clickable", Width = 75 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Locator basis", Width = 190 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Type", Width = 75 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Locator", Width = 480 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Reason / reusability", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
+        foreach (var c in result.DetailedCandidates.OrderByDescending(x => x.Score))
+        {
+            var i = grid.Rows.Add(c.Score, c.Unique ? "Yes" : "No", c.Visible ? "Yes" : "No", c.Clickable ? "Yes" : "No", c.Category, c.Type, c.Value, c.Rationale);
+            grid.Rows[i].Tag = c;
+        }
+        var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(8) };
+        var copy = new Button { Text = "Copy Selected Locator", AutoSize = true };
+        copy.Click += (_, _) => { if (grid.CurrentRow?.Tag is LocatorCandidate c) CopyText(c.Value); };
+        var close = new Button { Text = "Close", AutoSize = true };
+        close.Click += (_, _) => dialog.Close();
+        bottom.Controls.Add(close); bottom.Controls.Add(copy);
+        grid.SelectionChanged += (_, _) => {
+            if (!grid.Focused || grid.CurrentRow?.Tag is not LocatorCandidate candidate) return;
+            try { _inspector?.HighlightLocator(candidate.Value, _inspectorScript); }
+            catch (Exception ex) { MessageBox.Show(dialog, ex.Message, "Unable to highlight locator"); }
+        };
+        grid.CellDoubleClick += (_, _) => { if (grid.CurrentRow?.Tag is LocatorCandidate c) CopyText(c.Value); };
+        dialog.Controls.Add(grid); dialog.Controls.Add(bottom);
+        if (result.DetailedCandidates.Count == 0)
+            MessageBox.Show(this, "No detailed locator candidates were generated for this element.", "Locator Analysis");
+        dialog.ShowDialog(this);
     }
 
     private void CandidateListCellClick(object? sender, DataGridViewCellEventArgs e)

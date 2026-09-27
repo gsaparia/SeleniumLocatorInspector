@@ -51,7 +51,6 @@ public static class WebDriverDiscovery
 
                     foreach (var session in sessions)
                     {
-
                         results.Add(new ExistingWebDriverSession(
                             processName,
                             GetBrowserName(session),
@@ -101,7 +100,7 @@ public static class WebDriverDiscovery
         if (!response.IsSuccessStatusCode)
             return Array.Empty<SessionInfo>();
 
-        var document = JsonDocument.Parse(response.Content.ReadAsStreamAsync().GetAwaiter().GetResult());
+        using var document = JsonDocument.Parse(response.Content.ReadAsStreamAsync().GetAwaiter().GetResult());
         if (!document.RootElement.TryGetProperty("value", out var value) || value.ValueKind != JsonValueKind.Array)
             return Array.Empty<SessionInfo>();
 

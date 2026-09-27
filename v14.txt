@@ -1,0 +1,1 @@
+﻿Child element text locator basis improvement
