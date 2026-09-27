@@ -100,7 +100,7 @@ public static class WebDriverDiscovery
         if (!response.IsSuccessStatusCode)
             return Array.Empty<SessionInfo>();
 
-        using var document = JsonDocument.Parse(response.Content.ReadAsStreamAsync().GetAwaiter().GetResult());
+        var document = JsonDocument.Parse(response.Content.ReadAsStreamAsync().GetAwaiter().GetResult());
         if (!document.RootElement.TryGetProperty("value", out var value) || value.ValueKind != JsonValueKind.Array)
             return Array.Empty<SessionInfo>();
 

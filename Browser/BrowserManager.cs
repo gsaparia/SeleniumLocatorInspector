@@ -113,12 +113,12 @@ public sealed class BrowserManager : IDisposable
         // used here because Selenium .NET does not expose an official attach-to-
         // existing-session API for an already-created local driver session.
         var type = typeof(WebDriver);
-        var field = type.GetField("sessionId", BindingFlags.Instance | BindingFlags.NonPublic);
+        var field = type.GetProperty("SessionId", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic); ;
 
         if (field == null)
         {
             // Older/newer Selenium builds may keep it on RemoteWebDriver.
-            field = typeof(RemoteWebDriver).GetField("sessionId", BindingFlags.Instance | BindingFlags.NonPublic);
+            field = typeof(RemoteWebDriver).GetProperty("SessionId", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         }
 
         if (field == null)
