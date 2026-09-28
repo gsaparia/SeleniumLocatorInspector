@@ -5,6 +5,7 @@ using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Edge;
 using OpenQA.Selenium.Firefox;
 using OpenQA.Selenium.Remote;
+using SeleniumLocatorInspector.Properties;
 
 namespace SeleniumLocatorInspector.Browser;
 
@@ -113,12 +114,12 @@ public sealed class BrowserManager : IDisposable
         // used here because Selenium .NET does not expose an official attach-to-
         // existing-session API for an already-created local driver session.
         var type = typeof(WebDriver);
-        var field = type.GetProperty("SessionId", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic); ;
+        var field = type.GetField("sessionId", BindingFlags.Instance | BindingFlags.NonPublic);
 
         if (field == null)
         {
             // Older/newer Selenium builds may keep it on RemoteWebDriver.
-            field = typeof(RemoteWebDriver).GetProperty("SessionId", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            field = typeof(RemoteWebDriver).GetField("sessionId", BindingFlags.Instance | BindingFlags.NonPublic);
         }
 
         if (field == null)
@@ -131,20 +132,47 @@ public sealed class BrowserManager : IDisposable
     {
         var options = new EdgeOptions { UseWebSocketUrl = true };
         options.AddArgument("--disable-popup-blocking");
-        return new EdgeDriver(options);
+        var folder = GetConfiguredDriverFolder("msedgedriver.exe");
+        var service = EdgeDriverService.CreateDefaultService(folder, "msedgedriver.exe");
+        return new EdgeDriver(service, options);
     }
 
     private static IWebDriver CreateChrome()
     {
         var options = new ChromeOptions { UseWebSocketUrl = true };
         options.AddArgument("--disable-popup-blocking");
-        return new ChromeDriver(options);
+        var folder = GetConfiguredDriverFolder("chromedriver.exe");
+        var service = ChromeDriverService.CreateDefaultService(folder, "chromedriver.exe");
+        return new ChromeDriver(service, options);
     }
 
     private static IWebDriver CreateFirefox()
     {
         var options = new FirefoxOptions { UseWebSocketUrl = true };
-        return new FirefoxDriver(options);
+        var folder = GetConfiguredDriverFolder("geckodriver.exe");
+        var service = FirefoxDriverService.CreateDefaultService(folder, "geckodriver.exe");
+        return new FirefoxDriver(service, options);
+    }
+
+    private static string GetConfiguredDriverFolder(string executableName)
+    {
+        var configured = Settings.Default.WebDriversFolder?.Trim();
+        if (string.IsNullOrWhiteSpace(configured))
+            throw new InvalidOperationException("Set WebDriversFolder in Properties/Settings.settings before launching a browser.");
+
+        var folder = Path.GetFullPath(Path.IsPathRooted(configured)
+            ? configured
+            : Path.Combine(AppContext.BaseDirectory, configured));
+
+        if (!Directory.Exists(folder))
+            throw new DirectoryNotFoundException($"WebDriversFolder does not exist: {folder}");
+
+        var executablePath = Path.Combine(folder, executableName);
+        if (!File.Exists(executablePath))
+            throw new FileNotFoundException(
+                $"{executableName} was not found in WebDriversFolder: {folder}", executablePath);
+
+        return folder;
     }
 
     public void Stop()

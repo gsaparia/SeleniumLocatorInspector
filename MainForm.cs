@@ -662,24 +662,134 @@ public sealed class MainForm : Form
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Type", Width = 75 });
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Locator", Width = 480 });
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Reason / reusability", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
-        foreach (var c in result.DetailedCandidates.OrderByDescending(x => x.Score))
+        var allCandidates = result.DetailedCandidates.OrderByDescending(x => x.Score).ToList();
+        void AddCandidateRow(LocatorCandidate candidate)
         {
-            var i = grid.Rows.Add(c.Score, c.Unique ? "Yes" : "No", c.Visible ? "Yes" : "No", c.Clickable ? "Yes" : "No", c.Category, c.Type, c.Value, c.Rationale);
-            grid.Rows[i].Tag = c;
+            var i = grid.Rows.Add(candidate.Score, candidate.Unique ? "Yes" : "No",
+                candidate.Visible ? "Yes" : "No", candidate.Clickable ? "Yes" : "No",
+                candidate.Category, candidate.Type, candidate.Value, candidate.Rationale);
+            grid.Rows[i].Tag = candidate;
         }
+        foreach (var candidate in allCandidates) AddCandidateRow(candidate);
         var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(8) };
         var copy = new Button { Text = "Copy Selected Locator", AutoSize = true };
         copy.Click += (_, _) => { if (grid.CurrentRow?.Tag is LocatorCandidate c) CopyText(c.Value); };
         var close = new Button { Text = "Close", AutoSize = true };
         close.Click += (_, _) => dialog.Close();
         bottom.Controls.Add(close); bottom.Controls.Add(copy);
+
+        var testPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 76,
+            Padding = new Padding(8, 6, 8, 4),
+            ColumnCount = 2,
+            RowCount = 2
+        };
+        testPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        testPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
+        testPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        testPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+        var locatorInput = new TextBox
+        {
+            Dock = DockStyle.Fill,
+            PlaceholderText = "Enter a CSS selector or XPath",
+            Text = (grid.CurrentRow?.Tag as LocatorCandidate)?.Value ?? ""
+        };
+        var testButton = new Button { Text = "Test Locator", Dock = DockStyle.Fill };
+        var testStatus = new Label { Dock = DockStyle.Fill, AutoEllipsis = true,
+            Text = "Enter a locator and click Test Locator." };
+        testPanel.Controls.Add(locatorInput, 0, 0);
+        testPanel.Controls.Add(testButton, 1, 0);
+        testPanel.Controls.Add(testStatus, 0, 1);
+        testPanel.SetColumnSpan(testStatus, 2);
+        testButton.Click += (_, _) => {
+            var locator = locatorInput.Text.Trim();
+            if (locator.Length == 0)
+            {
+                testStatus.Text = "Enter a CSS selector or XPath first.";
+                return;
+            }
+            try
+            {
+                var test = _inspector!.TestLocator(locator, result.SelectionIndex, _inspectorScript);
+                testStatus.ForeColor = test.Error == null ? System.Drawing.SystemColors.ControlText : System.Drawing.Color.DarkRed;
+                testStatus.Text = test.Error == null
+                    ? $"Matches: {test.Count} | Selected element: {(test.SelectedElementMatched ? "Yes" : "No")} | Visible: {(test.Visible ? "Yes" : "No")} | Clickable: {(test.Clickable ? "Yes" : "No")}"
+                    : $"Invalid locator: {test.Error}";
+            }
+            catch (Exception ex)
+            {
+                testStatus.ForeColor = System.Drawing.Color.DarkRed;
+                testStatus.Text = $"Unable to test locator: {ex.Message}";
+            }
+        };
+        locatorInput.KeyDown += (_, e) => {
+            if (e.KeyCode != System.Windows.Forms.Keys.Enter) return;
+            e.SuppressKeyPress = true;
+            testButton.PerformClick();
+        };
+
+        var filterPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 40,
+            Padding = new Padding(8, 4, 8, 4),
+            ColumnCount = 3,
+            RowCount = 1
+        };
+        filterPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        filterPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        filterPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        var filterLabel = new Label { Text = "Filter locators:", Dock = DockStyle.Fill,
+            TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
+        var filterInput = new TextBox { Dock = DockStyle.Fill,
+            PlaceholderText = "Filter by locator, type, basis, or reason" };
+        var filterCount = new Label { Text = $"{allCandidates.Count} shown", Dock = DockStyle.Fill,
+            TextAlign = System.Drawing.ContentAlignment.MiddleRight };
+        filterPanel.Controls.Add(filterLabel, 0, 0);
+        filterPanel.Controls.Add(filterInput, 1, 0);
+        filterPanel.Controls.Add(filterCount, 2, 0);
+        var filteringRows = false;
+        filterInput.TextChanged += (_, _) => {
+            var search = filterInput.Text.Trim();
+            var previous = grid.CurrentRow?.Tag as LocatorCandidate;
+            var matches = allCandidates.Where(c => search.Length == 0 ||
+                c.Value.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                c.Type.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                c.Category.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                c.Rationale.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+            filteringRows = true;
+            grid.SuspendLayout();
+            try
+            {
+                grid.Rows.Clear();
+                foreach (var candidate in matches) AddCandidateRow(candidate);
+                var previousIndex = matches.FindIndex(c => ReferenceEquals(c, previous));
+                if (previousIndex >= 0)
+                    grid.CurrentCell = grid.Rows[previousIndex].Cells[6];
+                else
+                {
+                    grid.ClearSelection();
+                    grid.CurrentCell = null;
+                }
+            }
+            finally
+            {
+                grid.ResumeLayout();
+                filteringRows = false;
+            }
+            filterCount.Text = $"{matches.Count} shown";
+        };
         grid.SelectionChanged += (_, _) => {
-            if (!grid.Focused || grid.CurrentRow?.Tag is not LocatorCandidate candidate) return;
+            if (filteringRows || !grid.Focused || grid.CurrentRow?.Tag is not LocatorCandidate candidate) return;
+            locatorInput.Text = candidate.Value;
             try { _inspector?.HighlightLocator(candidate.Value, _inspectorScript); }
             catch (Exception ex) { MessageBox.Show(dialog, ex.Message, "Unable to highlight locator"); }
         };
         grid.CellDoubleClick += (_, _) => { if (grid.CurrentRow?.Tag is LocatorCandidate c) CopyText(c.Value); };
         dialog.Controls.Add(grid); dialog.Controls.Add(bottom);
+        dialog.Controls.Add(filterPanel); dialog.Controls.Add(testPanel);
         if (result.DetailedCandidates.Count == 0)
             MessageBox.Show(this, "No detailed locator candidates were generated for this element.", "Locator Analysis");
         dialog.ShowDialog(this);

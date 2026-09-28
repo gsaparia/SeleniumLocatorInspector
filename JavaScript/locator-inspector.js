@@ -18,6 +18,7 @@
         previousUserSelect: "",
         selectionElements: [],
         locatorHighlights: [],
+        pickSnapshot: null,
 
         start: function () {
             // The picker is intentionally reusable. Clear the previous
@@ -26,6 +27,10 @@
             this.stopRectangleSelection();
             this.result = null;
             window.__seleniumLocatorResult = null;
+
+            // Run the supplied multi-frame/shadow flattening when Pick Element
+            // starts. Selection itself takes a new copy if the page changes.
+            this.pickSnapshot = this.flattenMultiFrameDOM();
 
             this.active = true;
 
@@ -49,6 +54,7 @@
 
             this.clearHighlight();
             this.clearLocatorHighlights();
+            this.pickSnapshot = null;
         },
 
         startRectangleSelection: function () {
@@ -57,6 +63,8 @@
             this.result = null;
             window.__seleniumLocatorResult = null;
             this.selectionElements = [];
+
+            this.pickSnapshot = this.flattenMultiFrameDOM();
 
             this.rectangleActive = true;
             this.rectangleStart = null;
@@ -73,6 +81,7 @@
         stopRectangleSelection: function () {
             this.rectangleActive = false;
             this.rectangleStart = null;
+            this.pickSnapshot = null;
 
             if (this.rectangleDownHandler) {
                 document.removeEventListener("mousedown", this.rectangleDownHandler, true);
@@ -159,8 +168,9 @@
             const elements = this.findElementsInRectangle(box);
             this.selectionElements = elements;
 
+            const snapshot = elements.length ? this.flattenMultiFrameDOM() : null;
             const results = elements.map((element, index) =>
-                this.generateLocators(element, index)
+                this.generateLocators(element, index, snapshot)
             );
 
             if (results.length === 0) {
@@ -384,72 +394,81 @@
             }
         },
 
-        generateLocators: function (element, selectionIndex) {
-            const css = this.bestCss(element);
-            const xpath = this.bestXPath(element);
-            const shadowPath = this.getShadowPath(element);
-            const framePath = this.getFramePath();
+        generateLocators: function (element, selectionIndex, snapshot = this.flattenMultiFrameDOM()) {
+            const selectedClone = snapshot.findClone(element);
+            if (!selectedClone)
+                throw new Error("The selected element is no longer present in the accessible flattened DOM.");
 
-            const candidates = this.buildCandidates(element);
-            const detailedCandidates = this.buildDetailedCandidates(element, candidates);
-            const best = candidates[0];
-            const status = best ? this.locatorStatus(best.value, element) : { visible: false, clickable: false };
-            const stability = this.analyzeStability(element, candidates);
+            this._analysisSnapshot = snapshot;
+            this._analysisQueryCache = new Map();
+            try {
+                const css = this.bestCss(selectedClone);
+                const xpath = this.bestXPath(selectedClone);
+                const shadowPath = this.getShadowPath(element);
+                const framePath = this.getFramePath();
 
-            return {
-                tagName: element.tagName.toLowerCase(),
-                text: (element.innerText || element.textContent || "")
-                    .trim()
-                    .replace(/\s+/g, " ")
-                    .substring(0, 500),
+                const candidates = this.buildCandidates(selectedClone);
+                const detailedCandidates = this.buildDetailedCandidates(selectedClone, candidates, snapshot);
+                const best = candidates[0];
+                const status = best ? this.locatorStatus(best.value, element, snapshot) :
+                    { visible: false, clickable: false };
+                const stability = this.analyzeStability(selectedClone, [...candidates, ...detailedCandidates]);
 
-                css: css,
-                xpath: xpath,
+                return {
+                    tagName: selectedClone.tagName.toLowerCase(),
+                    text: (selectedClone.textContent || "")
+                        .trim().replace(/\s+/g, " ").substring(0, 500),
+                    css, xpath,
+                    cssUnique: this.cssCount(css) === 1,
+                    xpathUnique: this.xpathCount(xpath) === 1,
+                    insideShadowDom: shadowPath.length > 0,
+                    insideIframe: framePath.length > 0,
+                    shadowPath, framePath, candidates,
+                    visible: status.visible,
+                    clickable: status.clickable,
+                    detailedCandidates,
+                    stability,
+                    seleniumCode: this.generateSeleniumCode(css, shadowPath, framePath),
+                    selectionIndex: Number.isInteger(selectionIndex) ? selectionIndex : -1
+                };
+            } finally {
+                this._analysisSnapshot = null;
+                this._analysisQueryCache = null;
+            }
+        },
 
-                cssUnique: this.cssCount(css) === 1,
-                xpathUnique: this.xpathCount(xpath) === 1,
+        matchingClones: function (value, snapshot = this._analysisSnapshot) {
+            const cache = snapshot === this._analysisSnapshot ? this._analysisQueryCache : null;
+            if (cache && cache.has(value)) return cache.get(value);
+            const matches = snapshot.findAllClones(value);
+            if (cache) cache.set(value, matches);
+            return matches;
+        },
 
-                insideShadowDom: shadowPath.length > 0,
-                insideIframe: framePath.length > 0,
-
-                shadowPath: shadowPath,
-                framePath: framePath,
-                candidates: candidates,
-                visible: status.visible,
-                clickable: status.clickable,
-                detailedCandidates: detailedCandidates,
-                stability: stability,
-
-                seleniumCode: this.generateSeleniumCode(
-                    css,
-                    shadowPath,
-                    framePath
-                ),
-
-                selectionIndex: Number.isInteger(selectionIndex) ? selectionIndex : -1
-            };
+        candidateScore: function (value, base, unique) {
+            let score = base + (unique ? 12 : -25);
+            const positions = (value.match(/:nth-of-type\(|\/[a-z][\w-]*\[\d+\]/gi) || []).length;
+            score -= Math.min(36, positions * 12);
+            if (/^\/(?!\/)/.test(value)) score -= 18;
+            if (value.length > 160) score -= Math.min(15, Math.ceil((value.length - 160) / 30));
+            if (/^\/[\/.]*[a-z]+\[normalize-space\(\.\)=(['"])(?:Edit|View|Save|Next|More)\1\]$/i.test(value)) score -= 12;
+            return Math.max(0, Math.min(100, Math.round(score)));
         },
 
         buildCandidates: function (element) {
             const candidates = [];
 
             const add = (type, value, baseScore) => {
-                if (!value) return;
-
-                let unique = false;
-
-                try {
-                    unique = this.cssCount(value) === 1;
-                } catch {}
-
-                let score = baseScore;
-
-                if (unique) score += 10;
+                if (!value || candidates.some(c => c.type === type && c.value === value)) return;
+                let matches;
+                try { matches = this.matchingClones(value); } catch { return; }
+                if (!matches.includes(element)) return;
+                const unique = matches.length === 1;
 
                 candidates.push({
                     type: type,
                     value: value,
-                    score: score,
+                    score: this.candidateScore(value, baseScore, unique),
                     unique: unique
                 });
             };
@@ -462,20 +481,10 @@
                 );
             }
 
-            const testId =
-                element.getAttribute("data-testid") ||
-                element.getAttribute("data-test-id") ||
-                element.getAttribute("data-cy");
-
-            if (testId) {
-                add(
-                    "CSS",
-                    element.tagName.toLowerCase() +
-                    '[data-testid="' +
-                    this.cssAttributeEscape(testId) +
-                    '"]',
-                    95
-                );
+            for (const attribute of ["data-testid", "data-test-id", "data-cy"]) {
+                const value = element.getAttribute(attribute);
+                if (value) add("CSS", element.tagName.toLowerCase() +
+                    "[" + attribute + '="' + this.cssAttributeEscape(value) + '"]', 95);
             }
 
             const aria = element.getAttribute("aria-label");
@@ -528,7 +537,7 @@
                 );
             }
 
-            const text = (element.innerText || "").trim();
+            const text = (element.textContent || "").trim().replace(/\s+/g, " ");
 
             if (text && text.length <= 80) {
                 const tag = element.tagName.toLowerCase();
@@ -545,26 +554,20 @@
 
             const xpath = this.bestXPath(element);
 
-            if (xpath) {
-                candidates.push({
-                    type: "XPATH",
-                    value: xpath,
-                    score: 65 + (this.xpathCount(xpath) === 1 ? 10 : 0),
-                    unique: this.xpathCount(xpath) === 1
-                });
-            }
+            if (xpath) add("XPATH", xpath, 65);
 
             return candidates
                 .sort((a, b) => b.score - a.score)
                 .slice(0, 12);
         },
 
-        // The supplied flattenMultiFrameDOM/findAllOriginal approach keeps a map
-        // from a queryable copy (including open shadow trees and accessible frames)
-        // back to the live elements. Rebuild per query so the map is never stale.
+        // Analyze a single flattened snapshot, then map matching clones back
+        // to live elements for highlighting and state checks. A later highlight
+        // creates a fresh snapshot so navigation cannot leave a stale map.
         flattenMultiFrameDOM: function (rootWindow = window) {
             const cloneRoot = document.implementation.createHTMLDocument("Flattened Multi-Frame Copy");
             const elementMap = new Map();
+            const originalToClone = new Map();
             const traverse = (node, parentClone) => {
                 let clone;
                 if (node.nodeType === Node.ELEMENT_NODE) {
@@ -577,6 +580,7 @@
                 } else return;
                 parentClone.appendChild(clone);
                 elementMap.set(clone, node);
+                originalToClone.set(node, clone);
                 if (node.shadowRoot) node.shadowRoot.childNodes.forEach(child => traverse(child, clone));
                 node.childNodes.forEach(child => traverse(child, clone));
             };
@@ -592,20 +596,32 @@
                 }
             };
             flattenFrames(rootWindow, cloneRoot.body);
-            return {
-                findAllOriginal: selector => {
-                    const trimmed = selector.trim();
-                    const isXPath = /^(?:\*?\/|\.|\()/.test(trimmed);
-                    if (!isXPath) return Array.from(cloneRoot.querySelectorAll(selector), el => elementMap.get(el));
-                    const found = [];
-                    const iterator = cloneRoot.evaluate(selector, cloneRoot, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
-                    let node;
-                    while ((node = iterator.iterateNext())) {
-                        const original = elementMap.get(node);
-                        if (original) found.push(original);
-                    }
-                    return found;
+            const findAllClones = (selector, useXPath) => {
+                const trimmed = selector.trim();
+                const isXPath = useXPath === undefined
+                    ? /^(?:\*?\/\/|\.\/|\/|\()/.test(trimmed) || trimmed === "." || trimmed === ".."
+                    : useXPath;
+                if (!isXPath)
+                    return Array.from(cloneRoot.querySelectorAll(selector)).filter(el => elementMap.has(el));
+                const found = [];
+                const iterator = cloneRoot.evaluate(selector, cloneRoot, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+                let node;
+                while ((node = iterator.iterateNext())) {
+                    if (elementMap.has(node)) found.push(node);
                 }
+                return found;
+            };
+            return {
+                flattenedDoc: cloneRoot,
+                map: elementMap,
+                findClone: original => originalToClone.get(original),
+                findAllClones,
+                findOriginalBySelector: selector => elementMap.get(cloneRoot.querySelector(selector)) || null,
+                findOriginalByXPath: xpath => elementMap.get(
+                    cloneRoot.evaluate(xpath, cloneRoot, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue) || null,
+                findAllOriginalBySelector: selector => findAllClones(selector, false).map(clone => elementMap.get(clone)),
+                findAllOriginalByXPath: xpath => findAllClones(xpath, true).map(clone => elementMap.get(clone)),
+                findAllOriginal: selector => findAllClones(selector).map(clone => elementMap.get(clone))
             };
         },
 
@@ -644,9 +660,9 @@
             return !!hit && (element === hit || element.contains(hit) || hit.contains(element));
         },
 
-        locatorStatus: function (locator, target) {
+        locatorStatus: function (locator, target, snapshot) {
             try {
-                const matches = this.findAllOriginal(locator);
+                const matches = (snapshot || this.flattenMultiFrameDOM()).findAllOriginal(locator);
                 const matched = target ? matches.filter(el => el === target) : matches;
                 return {
                     matchesTarget: matched.length > 0,
@@ -664,9 +680,33 @@
         },
 
         highlightLocator: function (locator) {
+            const matches = this.findAllOriginal(locator);
+            this.highlightMatches(matches);
+            return matches.length;
+        },
+
+        testLocator: function (locator, selectionIndex) {
+            try {
+                const matches = this.findAllOriginal(locator);
+                this.highlightMatches(matches);
+                const selected = this.selectionElements[selectionIndex] || null;
+                return {
+                    count: matches.length,
+                    selectedElementMatched: !!selected && matches.includes(selected),
+                    visible: matches.some(element => this.isVisible(element)),
+                    clickable: matches.some(element => this.isClickable(element)),
+                    error: null
+                };
+            } catch (error) {
+                this.clearLocatorHighlights();
+                return { count: 0, selectedElementMatched: false, visible: false,
+                    clickable: false, error: error.message || String(error) };
+            }
+        },
+
+        highlightMatches: function (matches) {
             this.clearHighlight();
             this.clearLocatorHighlights();
-            const matches = this.findAllOriginal(locator);
             for (const element of matches) {
                 if (!element || element.nodeType !== Node.ELEMENT_NODE) continue;
                 this.locatorHighlights.push({ element, outline: element.style.outline });
@@ -682,7 +722,6 @@
                     }
                 } catch {}
             }
-            return matches.length;
         },
 
         parentForLocator: function (element) {
@@ -1076,24 +1115,297 @@
             }
         },
 
-        buildDetailedCandidates: function (element, candidates) {
+        meaningfulText: function (node) {
+            const direct = Array.from(node.childNodes || [])
+                .filter(child => child.nodeType === Node.TEXT_NODE)
+                .map(child => child.nodeValue).join(" ").trim().replace(/\s+/g, " ");
+            const tag = node.tagName.toLowerCase();
+            const text = direct || ((node.children.length <= 2 ||
+                /^(label|legend|strong|h[1-6]|td|th|a)$/.test(tag))
+                ? (node.textContent || "").trim().replace(/\s+/g, " ") : "");
+            if (text.length < 3 || text.length > 80 ||
+                /^(?:edit|view|save|next|more|submit|cancel)$/i.test(text)) return "";
+            return text;
+        },
+
+        stableContainerAnchors: function (node) {
+            const tag = node.tagName.toLowerCase();
+            const anchors = [];
+            for (const [attr, score] of [["data-testid", 92], ["data-test-id", 92],
+                ["data-cy", 91], ["data-qa", 89], ["part", 87], ["id", 88],
+                ["name", 78], ["aria-label", 80], ["role", 69]]) {
+                const value = node.getAttribute(attr);
+                if (value && value.length <= 100 && !this.isProbablyGenerated(value))
+                    anchors.push({ value: "//" + tag + "[@" + attr + "=" + this.xpathLiteral(value) + "]",
+                        score, reason: "container @" + attr });
+            }
+            for (const cls of this.stableClasses(node).slice(0, 2)) {
+                const predicate = node.getAttribute("class") === cls
+                    ? "@class=" + this.xpathLiteral(cls)
+                    : "contains(concat(' ',normalize-space(@class),' ')," + this.xpathLiteral(" " + cls + " ") + ")";
+                anchors.push({ value: "//" + tag + "[" + predicate + "]", score: 85,
+                    reason: "container class " + cls });
+            }
+            if (!anchors.length) anchors.push({ value: "//" + tag, score: 60, reason: "container tag" });
+            return anchors.slice(0, 4);
+        },
+
+        targetParts: function (element) {
+            const tag = element.tagName.toLowerCase();
+            const parts = [];
+            const text = this.meaningfulText(element);
+            if (text) parts.push({ value: tag + "[normalize-space(.)=" + this.xpathLiteral(text) + "]", score: 88 });
+            for (const attr of ["data-testid", "data-test-id", "data-cy", "name", "aria-label", "value", "type"]) {
+                const value = element.getAttribute(attr);
+                if (value && value.length <= 100 && !this.isProbablyGenerated(value))
+                    parts.push({ value: tag + "[@" + attr + "=" + this.xpathLiteral(value) + "]",
+                        score: attr === "type" ? 62 : 83 });
+            }
+            parts.push({ value: tag, score: 58 });
+            return [...parts.slice(0, 4), parts[parts.length - 1]];
+        },
+
+        textDistance: function (marker, target, container) {
+            const path = new Map();
+            let distance = 0;
+            for (let node = marker; node; node = node.parentElement) {
+                path.set(node, distance++);
+                if (node === container) break;
+            }
+            distance = 0;
+            for (let node = target; node; node = node.parentElement) {
+                if (path.has(node)) return distance + path.get(node);
+                if (node === container) break;
+                distance++;
+            }
+            return 100;
+        },
+
+        nearestTextMarkers: function (container, target, tags, limit = 2) {
+            return Array.from(container.querySelectorAll(tags)).slice(0, 1000)
+                .filter(node => node !== target && !node.contains(target) && !target.contains(node))
+                .map(node => ({ node, text: this.meaningfulText(node),
+                    distance: this.textDistance(node, target, container) }))
+                .filter(item => item.text && item.distance <= 12)
+                .sort((a, b) => a.distance - b.distance || a.text.length - b.text.length)
+                .slice(0, limit);
+        },
+
+        addCompositeCandidates: function (element, add, query) {
+            const tag = element.tagName.toLowerCase();
+            let produced = 0;
+            const attrs = ["data-testid", "data-test-id", "data-cy", "name", "aria-label",
+                "role", "autocomplete", "placeholder", "type", "part", "value"]
+                .map(name => ({ name, value: element.getAttribute(name) }))
+                .filter(item => item.value && item.value.length <= 100 && !this.isProbablyGenerated(item.value))
+                .slice(0, 8);
+            for (let i = 0; i < attrs.length; i++) {
+                for (let j = i + 1; j < attrs.length; j++) {
+                    if (produced >= 12) return;
+                    const a = attrs[i], b = attrs[j];
+                    const css = tag + "[" + a.name + '="' + this.cssAttributeEscape(a.value) + '"]' +
+                        "[" + b.name + '="' + this.cssAttributeEscape(b.value) + '"]';
+                    const xpath = "//" + tag + "[@" + a.name + "=" + this.xpathLiteral(a.value) +
+                        " and @" + b.name + "=" + this.xpathLiteral(b.value) + "]";
+                    for (const [type, locator] of [["CSS", css], ["XPATH", xpath]]) {
+                        try {
+                            const matches = query(locator);
+                            if (matches.length === 1 && matches[0] === element) {
+                                add("Combined attributes", type, locator, 85,
+                                    "Combines @" + a.name + " and @" + b.name + " on the selected element.");
+                                produced++;
+                            }
+                        } catch {}
+                    }
+                }
+            }
+        },
+
+        addAssociatedLabelCandidates: function (element, add, query) {
+            const tag = element.tagName.toLowerCase();
+            if (!["input", "textarea", "select"].includes(tag)) return;
+            const doc = element.ownerDocument;
+            if (element.id) {
+                for (const label of Array.from(doc.querySelectorAll("label[for]")).filter(node =>
+                    node.getAttribute("for") === element.id)) {
+                    const text = (label.textContent || "").trim().replace(/\s+/g, " ");
+                    if (!text || text.length > 80) continue;
+                    const xpath = "//" + tag + "[@id=//label[normalize-space(.)=" +
+                        this.xpathLiteral(text) + "]/@for]";
+                    try {
+                        if (query(xpath).length === 1 && query(xpath)[0] === element)
+                            add("Associated label", "XPATH", xpath, 95,
+                                "Follows the label's @for reference to the selected field.");
+                    } catch {}
+                }
+            }
+            const ids = (element.getAttribute("aria-labelledby") || "").trim().split(/\s+/).filter(Boolean);
+            for (const id of ids.slice(0, 4)) {
+                for (const reference of Array.from(doc.querySelectorAll("[id]")).filter(node => node.id === id)) {
+                    const text = this.meaningfulText(reference);
+                    if (!text) continue;
+                    const ref = "//" + reference.tagName.toLowerCase() +
+                        "[normalize-space(.)=" + this.xpathLiteral(text) + "]/@id";
+                    const predicate = ids.length === 1 ? "@aria-labelledby=" + ref :
+                        "contains(concat(' ',normalize-space(@aria-labelledby),' '),concat(' '," + ref + ",' '))";
+                    const xpath = "//" + tag + "[" + predicate + "]";
+                    try {
+                        if (query(xpath).length === 1 && query(xpath)[0] === element)
+                            add("Associated label", "XPATH", xpath, 92,
+                                "Uses the text referenced by @aria-labelledby.");
+                    } catch {}
+                }
+            }
+        },
+
+        addNearestContainerCandidates: function (element, add, query) {
+            const parts = this.targetParts(element);
+            let produced = 0;
+            for (let parent = element.parentElement, depth = 1; parent && depth <= 10;
+                parent = parent.parentElement, depth++) {
+                if (produced >= 20) break;
+                if (!this._analysisSnapshot.map.has(parent) || /^(BODY|HTML)$/.test(parent.tagName)) break;
+                let parentResults = 0;
+                const markers = this.nearestTextMarkers(parent, element,
+                    "div,label,legend,h1,h2,h3,h4,h5,h6,span,strong,p,td,th", 2);
+                for (const marker of markers) {
+                    const mt = marker.node.tagName.toLowerCase();
+                    const condition = "[.//" + mt + "[normalize-space(.)=" + this.xpathLiteral(marker.text) + "]]";
+                    for (const anchor of this.stableContainerAnchors(parent)) {
+                        for (const part of parts) {
+                            if (parentResults >= 4) break;
+                            const xpath = anchor.value + condition + "//" + part.value;
+                            try {
+                                const matches = query(xpath);
+                                if (matches.length === 1 && matches[0] === element) {
+                                    add("Nearest text container", "XPATH", xpath,
+                                        Math.min(96, (anchor.score + part.score) / 2 + 7 - depth - marker.distance),
+                                        "Uses nearby '" + marker.text + "' inside the smallest matching " +
+                                        parent.tagName.toLowerCase() + " container.");
+                                    produced++;
+                                    parentResults++;
+                                }
+                            } catch {}
+                        }
+                    }
+                }
+            }
+        },
+
+        addSiblingTextCandidates: function (element, add, query) {
+            const tag = element.tagName.toLowerCase();
+            for (let wrapper = element, depth = 0; wrapper && depth < 5;
+                wrapper = wrapper.parentElement, depth++) {
+                const preceding = wrapper.previousElementSibling;
+                if (!preceding) continue;
+                const marker = this.meaningfulText(preceding) ? preceding :
+                    Array.from(preceding.querySelectorAll("div,label,span,strong,h1,h2,h3,h4"))
+                        .find(node => this.meaningfulText(node));
+                if (!marker) continue;
+                const text = this.meaningfulText(marker);
+                if (!text) continue;
+                const markerTag = marker.tagName.toLowerCase();
+                const wrapperTag = wrapper.tagName.toLowerCase();
+                const precedingTag = preceding.tagName.toLowerCase();
+                const anchor = marker === preceding
+                    ? "//" + precedingTag + "[normalize-space(.)=" + this.xpathLiteral(text) + "]"
+                    : "//" + precedingTag + "[.//" + markerTag +
+                        "[normalize-space(.)=" + this.xpathLiteral(text) + "]]";
+                const xpath = anchor + "/following-sibling::" + wrapperTag + "[1]" +
+                    (wrapper === element ? "" : "//" + tag);
+                try {
+                    if (query(xpath).length === 1 && query(xpath)[0] === element)
+                        add("Sibling text", "XPATH", xpath, 82 - depth * 3,
+                            "The field wrapper directly follows the text '" + text + "'.");
+                } catch {}
+            }
+        },
+
+        addRepeatedItemCandidates: function (element, add, query) {
+            const tag = element.tagName.toLowerCase();
+            let produced = 0;
+            for (let parent = element.parentElement, depth = 1; parent && depth <= 8;
+                parent = parent.parentElement, depth++) {
+                if (produced >= 12) break;
+                if (!this._analysisSnapshot.map.has(parent) || /^(BODY|HTML)$/.test(parent.tagName)) break;
+                const parentTag = parent.tagName.toLowerCase();
+                if (!["tr", "li", "article", "section"].includes(parentTag) &&
+                    !/(?:item|card|row|tile|product|record|entry)/i.test(parent.getAttribute("class") || "")) continue;
+                for (const marker of this.nearestTextMarkers(parent, element,
+                    "td,th,h1,h2,h3,h4,h5,h6,a,strong", 2)) {
+                    const markerTag = marker.node.tagName.toLowerCase();
+                    const anchors = this.stableContainerAnchors(parent);
+                    for (const anchor of anchors) {
+                        for (const part of this.targetParts(element).slice(0, 3)) {
+                            if (produced >= 12) break;
+                            const xpath = anchor.value + "[.//" + markerTag +
+                                "[normalize-space(.)=" + this.xpathLiteral(marker.text) + "]]//" + part.value;
+                            try {
+                                if (query(xpath).length === 1 && query(xpath)[0] === element) {
+                                    add("Repeated item", "XPATH", xpath,
+                                        Math.min(94, (anchor.score + part.score) / 2 + 6 - depth),
+                                        "Identifies the " + parentTag + " by '" + marker.text +
+                                        "', then locates its control.");
+                                    produced++;
+                                }
+                            } catch {}
+                        }
+                    }
+                }
+            }
+        },
+
+        addRelationalCssCandidates: function (element, add, query) {
+            const tag = element.tagName.toLowerCase();
+            let produced = 0;
+            const targetName = element.getAttribute("name");
+            const targetCss = tag + (targetName && !this.isProbablyGenerated(targetName)
+                ? '[name="' + this.cssAttributeEscape(targetName) + '"]' : "");
+            for (let parent = element.parentElement, depth = 1; parent && depth <= 5;
+                parent = parent.parentElement, depth++) {
+                if (produced >= 8) break;
+                if (!this._analysisSnapshot.map.has(parent) || /^(BODY|HTML)$/.test(parent.tagName)) break;
+                const cls = this.stableClasses(parent)[0];
+                const id = parent.getAttribute("data-testid");
+                const base = id ? parent.tagName.toLowerCase() + '[data-testid="' +
+                    this.cssAttributeEscape(id) + '"]' : cls ? parent.tagName.toLowerCase() + "." + CSS.escape(cls) : null;
+                if (!base) continue;
+                const markers = Array.from(parent.querySelectorAll("label[for],[data-testid],[data-cy]"))
+                    .filter(node => node !== element && !node.contains(element) && !element.contains(node)).slice(0, 12);
+                for (const marker of markers) {
+                    const attr = ["for", "data-testid", "data-cy"].find(name => marker.getAttribute(name));
+                    if (!attr) continue;
+                    const css = base + ":has(" + marker.tagName.toLowerCase() + "[" + attr + '="' +
+                        this.cssAttributeEscape(marker.getAttribute(attr)) + '"]) ' + targetCss;
+                    try {
+                        if (query(css).length === 1 && query(css)[0] === element) {
+                            add("CSS container relationship", "CSS", css, 78 - depth,
+                                "Scopes the target to a container holding a related " + marker.tagName.toLowerCase() + ".");
+                            produced++;
+                        }
+                    } catch {} // Browsers without :has() support simply omit this candidate.
+                }
+            }
+        },
+
+        buildDetailedCandidates: function (element, candidates, snapshot) {
             const out = [];
-            const snapshot = this.flattenMultiFrameDOM();
-            const cache = new Map();
-            const query = value => {
-                if (!cache.has(value)) cache.set(value, snapshot.findAllOriginal(value));
-                return cache.get(value);
-            };
+            const query = value => this.matchingClones(value, snapshot);
+            const original = snapshot.map.get(element);
+            const visible = this.isVisible(original);
+            const clickable = this.isClickable(original);
             const add = (category, type, value, base, rationale) => {
                 if (!value || out.some(x => x.value === value && x.type === type)) return;
                 let matches;
                 try { matches = query(value); } catch { return; }
                 if (!matches.includes(element)) return;
                 const unique = matches.length === 1;
-                out.push({ category, type, value, score: Math.max(0, Math.min(100, Math.round(base + (unique ? 10 : 0)))),
-                    unique, visible: this.isVisible(element), clickable: this.isClickable(element), rationale });
+                out.push({ category, type, value, score: this.candidateScore(value, base, unique),
+                    unique, visible, clickable, rationale });
             };
-            candidates.forEach(c => add("Direct attributes / text / structure", c.type, c.value, c.score - (c.unique ? 10 : 0), "Generated from the element's own attributes, text, or DOM structure."));
+            candidates.forEach(c => out.push({ category: "Direct attributes / text / structure", type: c.type,
+                value: c.value, score: c.score, unique: c.unique, visible, clickable,
+                rationale: "Generated from the element's own attributes, text, or DOM structure." }));
 
             const tag = element.tagName.toLowerCase();
             const attrs = ["id", "name", "type", "placeholder", "aria-label", "title", "role", "data-testid", "data-test-id", "data-cy", "value", "autocomplete"];
@@ -1126,7 +1438,7 @@
             this.addChildTextCandidates(element, add, query);
 
             const parent = element.parentElement;
-            if (parent && parent !== document.body && parent !== document.documentElement) {
+            if (parent && parent.tagName.toLowerCase() !== "body" && parent.tagName.toLowerCase() !== "html") {
                 const ptag = parent.tagName.toLowerCase();
                 for (const attr of ["id", "data-testid", "data-test-id", "data-cy", "name", "aria-label", "role"]) {
                     const val = parent.getAttribute(attr);
@@ -1139,7 +1451,7 @@
             if (tag === "input" || tag === "textarea" || tag === "select") {
                 let label = null;
                 if (element.id) {
-                    try { label = document.querySelector('label[for="' + this.cssAttributeEscape(element.id) + '"]'); } catch {}
+                    try { label = element.ownerDocument.querySelector('label[for="' + this.cssAttributeEscape(element.id) + '"]'); } catch {}
                 }
                 if (!label) label = element.closest("label");
                 if (label) {
@@ -1153,6 +1465,12 @@
                 if (placeholder) add("Reusable form locator", "XPATH", "//" + tag + "[@placeholder=" + this.xpathLiteral(placeholder) + "]", 78, "Uses placeholder; useful when stable, but may change with UX copy or localization.");
             }
 
+            this.addCompositeCandidates(element, add, query);
+            this.addAssociatedLabelCandidates(element, add, query);
+            this.addNearestContainerCandidates(element, add, query);
+            this.addSiblingTextCandidates(element, add, query);
+            this.addRepeatedItemCandidates(element, add, query);
+            this.addRelationalCssCandidates(element, add, query);
             this.addContainerCandidates(element, add);
             this.addReusableSectionCandidates(element, add, query);
             this.addDeepParentCandidates(element, add, query);
@@ -1208,18 +1526,17 @@
         cssPath: function (element) {
             const parts = [];
             let current = element;
+            let positionalFallback = null;
 
             while (
                 current &&
                 current.nodeType === Node.ELEMENT_NODE &&
-                current !== document.body
+                current !== (this._analysisSnapshot?.flattenedDoc.body || document.body)
             ) {
                 let selector = current.tagName.toLowerCase();
 
                 if (current.id && !this.isProbablyGenerated(current.id)) {
                     selector += "#" + CSS.escape(current.id);
-                    parts.unshift(selector);
-                    break;
                 }
 
                 const stableClasses = this.stableClasses(current);
@@ -1230,6 +1547,12 @@
                         .map(c => "." + CSS.escape(c))
                         .join("");
                 }
+
+                const withoutPosition = [selector, ...parts].join(" > ");
+                try {
+                    const matches = this.matchingClones(withoutPosition);
+                    if (matches.length === 1 && matches[0] === element) return withoutPosition;
+                } catch {}
 
                 const parent = current.parentElement;
 
@@ -1245,10 +1568,16 @@
                 }
 
                 parts.unshift(selector);
+                const withPosition = parts.join(" > ");
+                try {
+                    const matches = this.matchingClones(withPosition);
+                    if (!positionalFallback && matches.length === 1 && matches[0] === element)
+                        positionalFallback = withPosition;
+                } catch {}
                 current = parent;
             }
 
-            return parts.join(" > ");
+            return positionalFallback || parts.join(" > ");
         },
 
         bestXPath: function (element) {
@@ -1287,7 +1616,7 @@
                     return candidate;
             }
 
-            const text = (element.innerText || "").trim();
+            const text = (element.textContent || "").trim().replace(/\s+/g, " ");
 
             if (text && text.length <= 80) {
                 const candidate =
@@ -1306,6 +1635,7 @@
         xpathPath: function (element) {
             const parts = [];
             let current = element;
+            let positionalFallback = null;
 
             while (
                 current &&
@@ -1326,10 +1656,28 @@
                     "[" + index + "]"
                 );
 
+                // Prefer a short path under a real identifying ancestor.
+                if (current !== element && this._analysisSnapshot.map.has(current)) {
+                    for (const anchor of this.stableContainerAnchors(current)) {
+                        if (anchor.reason === "container tag") continue;
+                        const scoped = anchor.value + "/" + parts.slice(1).join("/");
+                        try {
+                            const matches = this.matchingClones(scoped);
+                            if (matches.length === 1 && matches[0] === element) return scoped;
+                        } catch {}
+                    }
+                }
+                const suffix = "//" + parts.join("/");
+                try {
+                    const matches = this.matchingClones(suffix);
+                    if (!positionalFallback && matches.length === 1 && matches[0] === element)
+                        positionalFallback = suffix;
+                } catch {}
+
                 current = current.parentElement;
             }
 
-            return "/" + parts.join("/");
+            return positionalFallback || "/" + parts.join("/");
         },
 
         getShadowPath: function (element) {
@@ -1404,7 +1752,8 @@
                     if (!c) return false;
                     if (c.length > 40) return false;
 
-                    return !/^css-[a-z0-9]+$/i.test(c) &&
+                    return !this.isProbablyGenerated(c) &&
+                        !/^css-[a-z0-9]+$/i.test(c) &&
                         !/^sc-[a-z0-9]+$/i.test(c) &&
                         !/^_[a-z0-9]{5,}$/i.test(c) &&
                         !/^\d+$/.test(c);
@@ -1419,6 +1768,8 @@
                 /^ctl\d+_/i.test(value) ||
                 /^ember\d+$/i.test(value) ||
                 /^react-select-\d+/i.test(value) ||
+                /^(?:react-aria-|radix-|headlessui-|mui-)/i.test(value) ||
+                /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value) ||
                 /^css-[a-z0-9]+$/i.test(value) ||
                 /^[a-f0-9]{12,}$/i.test(value) ||
                 /_\d{4,}$/.test(value)
@@ -1427,8 +1778,11 @@
 
         cssAttributeEscape: function (value) {
             return String(value)
-                .replace(/\\/g, "\\\\")
-                .replace(/"/g, '\\"');
+                .replace(/[\u0000-\u001f\u007f"\\]/g, character => {
+                    if (character === "\\") return "\\\\";
+                    if (character === '"') return '\\"';
+                    return "\\" + character.codePointAt(0).toString(16) + " ";
+                });
         },
 
         xpathLiteral: function (value) {
@@ -1445,7 +1799,7 @@
 
         cssCount: function (selector) {
             try {
-                return document.querySelectorAll(selector).length;
+                return this.matchingClones(selector, this._analysisSnapshot || this.flattenMultiFrameDOM()).length;
             } catch {
                 return 0;
             }
@@ -1453,15 +1807,7 @@
 
         xpathCount: function (xpath) {
             try {
-                const result = document.evaluate(
-                    xpath,
-                    document,
-                    null,
-                    XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
-                    null
-                );
-
-                return result.snapshotLength;
+                return this.matchingClones(xpath, this._analysisSnapshot || this.flattenMultiFrameDOM()).length;
             } catch {
                 return 0;
             }
@@ -1504,10 +1850,9 @@
                 );
             }
 
-            const indexy = candidates.some(c =>
-                c.value.includes(":nth-of-type(") ||
-                /\/\w+\[\d+\]/.test(c.value)
-            );
+            const best = candidates.slice().sort((a, b) => b.score - a.score)[0] || null;
+            const indexy = best && (best.value.includes(":nth-of-type(") ||
+                /\/\w+\[\d+\]/.test(best.value));
 
             if (indexy) {
                 warnings.push("A candidate depends on a DOM position/index.");
@@ -1517,19 +1862,11 @@
                 positive.push("Semantic role information is available.");
             }
 
-            const best = candidates.length ? candidates[0] : null;
-
             let rating = "Medium";
 
-            if (best && best.unique &&
-                (best.value.includes("data-testid") ||
-                 best.value.includes("data-test-id") ||
-                 best.value.includes("data-cy"))) {
+            if (best && best.unique && best.score >= 90 && !indexy) {
                 rating = "High";
-            } else if (best && best.unique &&
-                (element.id && !this.isProbablyGenerated(element.id))) {
-                rating = "High";
-            } else if (warnings.length >= 2) {
+            } else if (!best || !best.unique || best.score < 55 || warnings.length >= 2) {
                 rating = "Low";
             }
 

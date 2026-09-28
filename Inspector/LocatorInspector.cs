@@ -70,6 +70,18 @@ public sealed class LocatorInspector
             "return window.__seleniumLocatorInspector.highlightLocator(arguments[0]);", locator));
     }
 
+    public LocatorTestResult TestLocator(string locator, int selectionIndex, string inspectorScript)
+    {
+        // Selenium passes the locator as data; it is never interpolated into JavaScript.
+        _js.ExecuteScript(inspectorScript);
+        var json = _js.ExecuteScript(
+            "return JSON.stringify(window.__seleniumLocatorInspector.testLocator(arguments[0], arguments[1]));",
+            locator, selectionIndex) as string;
+
+        return JsonSerializer.Deserialize<LocatorTestResult>(json ?? "{}",
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new LocatorTestResult();
+    }
+
     public LocatorResult? GetSelectedResult()
     {
         var json = _js.ExecuteScript(
@@ -85,4 +97,13 @@ public sealed class LocatorInspector
                 PropertyNameCaseInsensitive = true
             });
     }
+}
+
+public sealed class LocatorTestResult
+{
+    public int Count { get; set; }
+    public bool SelectedElementMatched { get; set; }
+    public bool Visible { get; set; }
+    public bool Clickable { get; set; }
+    public string? Error { get; set; }
 }

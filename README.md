@@ -32,7 +32,7 @@ dotnet build
 dotnet run
 ```
 
-Selenium Manager is used by Selenium 4 to locate the browser driver.
+Set `WebDriversFolder` in `Properties/Settings.settings` to the directory containing your WebDriver executables. The default `WebDrivers` is relative to the application's output folder (`bin/Debug/net8.0-windows/WebDrivers` when running a Debug build). Put `msedgedriver.exe`, `chromedriver.exe`, and/or `geckodriver.exe` in that directory for the browsers you plan to launch. An absolute folder path also works. Browser launch checks the selected executable and uses its explicit driver service; it does not use Selenium Manager. Hooking to an existing WebDriver session does not require this folder.
 
 ## Locator analysis (v6)
 
@@ -71,3 +71,19 @@ Deep parent analysis now recognizes the `part` attribute and combines an identif
 ## Child text with target role (v14)
 
 Child element text analysis now combines exact descendant text with the selected element's own role, test attribute, part, accessible label, stable class, or tag. A button-like element containing a child reading "Create images" can yield `//div[@role='button'][.//*[normalize-space(.)='Create images']]`. The element's actual tag and role are used, so pages with a `<button role="menuitemradio">` receive a corresponding expression. Text in accessible open shadow roots is considered through the flattened DOM, and only locators that uniquely match the selected element are added by this analysis.
+
+## Flattened DOM first (v16)
+
+Selecting an element now creates one flattened copy of the accessible documents before any CSS, XPath, main grid, or Locator Analysis candidates are generated. All scoring, uniqueness checks, container and child text analysis use the selected element's clone in that copy. A reverse map connects each clone to its live element for Visible and Clickable checks. Rectangle selections share one snapshot across their rows. Selecting a locator later builds a fresh flattened copy and highlights the matching live elements, avoiding a stale mapping after page changes. Synthetic frame wrapper elements are excluded from locator results.
+
+## Test Locator (v17)
+
+Pick Element and Select Rectangle each run the supplied `flattenMultiFrameDOM` approach as soon as selection starts. Locator Analysis includes a text field and **Test Locator** button. Enter a CSS selector or XPath and click the button (or press Enter) to run `findAllOriginal` against a fresh flattened copy of the current page. The matching live elements are highlighted, and the window reports the match count, whether the inspected element matched, visibility, clickability, or an invalid locator error. Selecting a generated locator row fills the test field with that locator. CSS class selectors beginning with `.` are distinguished from relative XPath expressions beginning with `.//`.
+
+## Locator Analysis filter (v18)
+
+The Locator Analysis window has a filter above its candidate grid. It filters rows while typing, ignoring case and matching locator, type, locator basis, and explanation text. A count shows how many rows remain. Filtering preserves a selected row when it still matches and does not replace text typed in the separate Test Locator field.
+
+## Expanded locator strategies (v19)
+
+Locator Analysis adds locators from the nearest meaningful text inside a shared container, explicit `label[for]` and `aria-labelledby` references, combined target attributes, direct sibling text, named product cards and table rows, and CSS `:has()` relationships when supported by the browser. All are checked against the same flattened DOM and mapped to the selected original element. Candidate scoring favors unique, short, semantic relationships and demotes ambiguous, long, absolute, or positional paths. CSS and XPath structural fallbacks now stop at a short unique path or identifying ancestor where possible. Repeated query results are cached for the duration of an analysis, and the main stability rating considers both grids. Generated looking IDs and classes are filtered more thoroughly, and CSS attribute strings escape control characters.
