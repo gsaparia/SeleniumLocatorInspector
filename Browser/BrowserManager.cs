@@ -1,5 +1,3 @@
-using System.Net.Http;
-using System.Reflection;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Edge;
@@ -70,62 +68,17 @@ public sealed class BrowserManager : IDisposable
 
     private static IWebDriver AttachToExistingSession(ExistingWebDriverSession session)
     {
-        // Selenium .NET creates a new session in RemoteWebDriver's constructor.
-        // We immediately delete that temporary session and replace its internal
-        // SessionId with the already-running WebDriver session.
-        DriverOptions requestedOptions;
-
-        if (session.BrowserName.Contains("firefox", StringComparison.OrdinalIgnoreCase))
-        {
-            requestedOptions = new FirefoxOptions();
-        }
-        else if (session.BrowserName.Contains("MicrosoftEdge", StringComparison.OrdinalIgnoreCase) ||
-                 session.BrowserName.Contains("edge", StringComparison.OrdinalIgnoreCase))
-        {
-            requestedOptions = new EdgeOptions();
-        }
-        else
-        {
-            requestedOptions = new ChromeOptions();
-        }
-
-        var remote = new RemoteWebDriver(session.ServerUri, requestedOptions);
-
-        var temporarySessionId = ((IHasSessionId)remote).SessionId?.ToString();
-        if (!string.IsNullOrWhiteSpace(temporarySessionId))
-        {
-            DeleteSession(session.ServerUri, temporarySessionId);
-        }
-
-        SetSessionId(remote, session.SessionId);
-        return remote;
-    }
-
-    private static void DeleteSession(Uri serverUri, string sessionId)
-    {
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        using var response = client.DeleteAsync(
-            new Uri(serverUri, $"session/{sessionId}")).GetAwaiter().GetResult();
-    }
-
-    private static void SetSessionId(RemoteWebDriver driver, string sessionId)
-    {
-        // SessionId is intentionally encapsulated by Selenium. Reflection is
-        // used here because Selenium .NET does not expose an official attach-to-
-        // existing-session API for an already-created local driver session.
-        var type = typeof(WebDriver);
-        var field = type.GetField("sessionId", BindingFlags.Instance | BindingFlags.NonPublic);
-
-        if (field == null)
-        {
-            // Older/newer Selenium builds may keep it on RemoteWebDriver.
-            field = typeof(RemoteWebDriver).GetField("sessionId", BindingFlags.Instance | BindingFlags.NonPublic);
-        }
-
-        if (field == null)
-            throw new NotSupportedException("Could not locate Selenium's internal sessionId field.");
-
-        field.SetValue(driver, new SessionId(sessionId));
+        if (session.Capabilities.ValueKind != System.Text.Json.JsonValueKind.Object)
+            throw new InvalidOperationException("The existing WebDriver did not return its session capabilities.");
+        // The executor supplies the original session handshake locally. No new
+        // browser is launched and no external session is deleted or modified.
+        var executor = new AttachedSessionExecutor(session.ServerUri, session.SessionId, session.Capabilities);
+        DriverOptions options = session.BrowserName.Contains("firefox", StringComparison.OrdinalIgnoreCase)
+            ? new FirefoxOptions()
+            : session.BrowserName.Contains("edge", StringComparison.OrdinalIgnoreCase)
+                ? new EdgeOptions() : new ChromeOptions();
+        try { return new RemoteWebDriver(executor, options.ToCapabilities()); }
+        catch { executor.Dispose(); throw; }
     }
 
     private static IWebDriver CreateEdge()
@@ -181,6 +134,9 @@ public sealed class BrowserManager : IDisposable
         {
             // Detach without sending DELETE /session/{id}; the external test
             // session must remain alive after the inspector disconnects.
+            // AttachedSessionExecutor intercepts Quit, so Dispose only closes
+            // this inspector's HTTP resources, leaving the original session alive.
+            try { Driver?.Dispose(); } catch { }
             Driver = null;
             _hookedToExistingSession = false;
             return;

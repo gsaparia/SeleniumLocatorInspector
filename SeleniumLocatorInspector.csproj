@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <Version>24.0.0</Version>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -9,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Verification\**\*.cs" />
     <EmbeddedResource Include="JavaScript\locator-inspector.js" LogicalName="SeleniumLocatorInspector.JavaScript.locator-inspector.js" />
   </ItemGroup>
 

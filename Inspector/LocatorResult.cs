@@ -34,6 +34,16 @@ public sealed class LocatorCandidate
     public string Rationale { get; set; } = "";
     public string Value { get; set; } = "";
     public int Score { get; set; }
+    public int Matches { get; set; }
+    public bool SelectedTargetMatched { get; set; }
+    public int VisibleMatches { get; set; }
+    public int ClickableMatches { get; set; }
+    public string Recommendation { get; set; } = "";
+    public string Scope { get; set; } = "";
+    public string ContainerLocator { get; set; } = "";
+    public string Execution { get; set; } = "";
+    public string Risk { get; set; } = "";
+    public string Resilience { get; set; } = "";
     public bool Unique { get; set; }
     public bool Visible { get; set; }
     public bool Clickable { get; set; }

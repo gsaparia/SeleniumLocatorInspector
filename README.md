@@ -87,3 +87,81 @@ The Locator Analysis window has a filter above its candidate grid. It filters ro
 ## Expanded locator strategies (v19)
 
 Locator Analysis adds locators from the nearest meaningful text inside a shared container, explicit `label[for]` and `aria-labelledby` references, combined target attributes, direct sibling text, named product cards and table rows, and CSS `:has()` relationships when supported by the browser. All are checked against the same flattened DOM and mapped to the selected original element. Candidate scoring favors unique, short, semantic relationships and demotes ambiguous, long, absolute, or positional paths. CSS and XPath structural fallbacks now stop at a short unique path or identifying ancestor where possible. Repeated query results are cached for the duration of an analysis, and the main stability rating considers both grids. Generated looking IDs and classes are filtered more thoroughly, and CSS attribute strings escape control characters.
+
+
+## v20 — HAR export and request replay
+
+- **Download Har** saves all current grid rows to a UTF-8 HAR 1.2 file, including available request/response bodies. Export while recording for the best body coverage. Missing bodies and unavailable detailed timings are marked. Binary responses use base64; binary requests use the `_encoding` extension.
+- **Resend Request** opens the selected request for editing: method, URL, headers and body. Click **Send request** to send it and add the result to the grid, including response headers/body. The dialog supports base64 for binary bodies and cancellation.
+- Replay uses the desktop HTTP client. Include needed cookies or authorization in the editable headers; browser cookies are not automatically added. Redirects are not followed. Content-Length/Transfer-Encoding are recalculated and HTTP/2 pseudo headers are omitted. Unedited captured bodies retain their original bytes. Edited text uses the declared charset, or UTF-8.
+- Responses are limited to 16 MiB; oversized/cancelled/failed requests remain visible with an explanation. HAR files contain the captured headers and bodies, including any credentials they contain.
+
+Build on Windows with .NET 8: `dotnet build SeleniumLocatorInspector.csproj`.
+
+Network verification (no external traffic): `dotnet run --project Verification/NetworkTools.csproj`. Covers HAR JSON/binary/missing bodies and a local loopback server for edited requests, recalculated lengths, redirects and cancellation.
+
+## v21 — HAR import and recording in hooked sessions
+
+- **Import Har** appends requests from a `.har` file to the grid. Headers and available bodies appear in the four detail tabs, with existing pretty printing, media preview/download, status colouring, export and resend support. Files can be analysed without connecting a browser: open **Analyse Network Traffic**, then **Import Har**. Imported files do not start recording or send requests.
+- HAR import preserves separate rows for repeated imports. Handles ordinary text, JSON, base64 response content, binary request extensions and URL-encoded `postData.params`. Missing bodies and multipart bodies without exact bytes are marked unavailable. Invalid files leave current rows intact. Limits: 128 MiB/file, 50,000 entries.
+- **Hook To WebDriver** now attaches directly using the original session ID and original capabilities. It does not create/delete a temporary browser session. Detaching/closing the inspector leaves the external session running.
+- Recording uses the original session's BiDi endpoint when available, with DevTools fallback if the BiDi connection fails. Hooked Chrome/Edge sessions created without BiDi use a separate DevTools connection discovered from their existing `debuggerAddress`. The recording label identifies **BiDi** or **DevTools (current tab)**. DevTools records the selected page target and its reported requests; separate tabs, worker targets and out-of-process frame targets are not automatically attached. Select the desired WebDriver window before starting recording. Only future traffic is captured; use **Reload page** after **Start recording**.
+- Firefox sessions without BiDi cannot have it enabled after creation. For an external Firefox session, set `new FirefoxOptions { UseWebSocketUrl = true }` before creating its FirefoxDriver, then hook it. Sessions without either a BiDi endpoint or a reachable Chrome/Edge debugging endpoint show an actionable message.
+- DevTools tracks redirects as separate rows, associates out-of-order wire headers with their correct redirect hop, and retains request data and response bodies where the browser exposes them. Upload-file bodies and evicted/redirect response bodies may be unavailable. It does not enable interception, disable caching, change cookies, or consume another client's performance logs.
+
+Verification now also covers HAR import/export round trips and CDP event fixtures for early/late headers, redirects, timestamps and body ownership. Run `dotnet run --project Verification/NetworkTools.csproj` with .NET 8. Build/UI testing requires Windows and .NET 8; this delivery was checked statically in an environment without the .NET SDK.
+
+
+## v22 — Keep bodies after Stop Recording
+
+- Completed/failed live requests now retrieve and cache their request and response bodies automatically, regardless of which rows are selected. Body collection runs with six concurrent request pairs to avoid flooding the browser.
+- **Stop recording** freezes the displayed capture, shows **Saving captured bodies…**, and finishes collecting completed rows before closing the recording connection. Available data remains usable in the detail tabs, media preview/download, HAR export and Resend Request after stopping. Failed reads retain the browser's specific explanation; retries preserve bytes already collected successfully.
+- Rows still in progress at the stop click explain that their response had not completed. Late events from an old recording cannot add rows to a new recording.
+- Verification includes delayed body reads, unselected completed rows, binary/media retention and HAR export after stop: `dotnet run --project Verification/NetworkTools.csproj`. Source checks passed here; the .NET SDK and Windows UI were unavailable for compilation and live testing.
+
+
+## v23 — Meaningful locator recommendations
+
+The existing flattened-DOM analyser now compares container identity, control identity and uniqueness rather than choosing the first nearby text or relying on uniqueness alone.
+
+- Meaningful container markers: associated labels, referenced ARIA text, legends, headings and record text take priority. Hidden markers, prices, counters, timestamps and validation/status messages are rejected or downgraded. A descriptive div/span remains usable when semantic labels are absent.
+- Repeated fields: a local field relationship is tried first; a named outer section is added when the field relationship is ambiguous. Example: `//section[.//h2[normalize-space(.)='Billing']]//div[.//label[normalize-space(.)='Email address']]//input` (actual generated text predicates also normalize non-breaking spaces).
+- Original DOM roots are checked before treating matching IDs as label/ARIA associations, avoiding false associations across frames and shadow components.
+- Stable class tokens tolerate additional classes. Editable field values and structural/index-based paths receive lower scores. Generated-looking attributes and text/localization dependencies are explained.
+- Detailed results show recommendations, match counts, scope/marker, execution mode, resilience and dependencies. Best overall is highlighted; these fields also participate in the live filter. Visibility/clickability are evaluated against the locator's actual original-element matches.
+- The highest ranked unique candidates feed the main CSS/XPath results and generated Selenium code. Code uses the best overall candidate and its execution context; flattened-only and shadow relationships use `findAllOriginal` with an exactly-one-match guard. Native frame candidates include the frame path.
+- Up to 12 leading unique candidates are tested against four inert DOM-copy mutations: extra classes, reordered siblings, a neutral wrapper and removed transient IDs/classes. These checks influence ranking without changing the live page. They are heuristic checks, not proof of stability across application versions or states.
+
+Verification performed for this delivery:
+
+- `node --check JavaScript/locator-inspector.js` and verification script syntax checks passed.
+- `node Verification/locator-quality.cjs` passed 20 checks against production scoring, relationship generation, recommendation/code consistency and Python/lxml XPath fixtures. Requires Node and Python with lxml.
+- `node Verification/locator-analysis.browser.cjs` is included for real Chromium integration tests covering fields, actions, record rows, shadow DOM, frames, clone isolation and recommendation consistency. Requires Playwright and its Chromium installation. This script was **not run here**, because a browser executable was unavailable.
+- The Windows WinForms/.NET 8 build and interactive UI were **not tested here**, because the .NET SDK and Windows runtime were unavailable. Existing network verification remains `dotnet run --project Verification/NetworkTools.csproj`.
+
+Limitations: closed shadow roots and inaccessible cross-origin frames cannot be inspected by this JavaScript flattening approach. Text-based locators depend on language/copy. Locator quality is inferred from the current accessible DOM; virtualized/unrendered records and future rerenders require validation in the target application. Resolver-generated Selenium code requires the inspector JavaScript to be installed in the current browser context, including after navigation.
+
+
+## v24 — Repeater identity and children
+
+Implements the item-first strategy demonstrated with the Bose speaker: identify one repeated product by its name, then locate a price, image or another child within that item.
+
+- Detects repeating-template attribute presence (`ng-repeat`, `data-ng-repeat`, `x-ng-repeat`, `v-for`, `data-repeat`) rather than coupling the locator to framework expression values. Other list/row/card and repeated sibling patterns remain supported.
+- Builds and verifies the container independently. A candidate is added only when both the container and selected target uniquely match. Selecting the item itself generates the container expression.
+- Product names, headings and record text provide identity; prices, numeric counters, transient status/action text and markers belonging to nested repeated items are excluded from repeater identity.
+- Children use stable attributes, class tokens or a unique tag, so price amounts and image URLs need not become locator dependencies. Class tokens tolerate extra classes and avoid substring collisions.
+- Injection upgrades an older inspector already installed in a hooked browser and cleans its old listeners; reinjecting v24 preserves its current state.
+- The grid exposes the separate **Item container locator**, supports filtering it, and provides **Copy Item Container**. The existing locator still selects the chosen element for testing and highlighting.
+- Verified repeater relationships influence ranking; when equally ranked, a repeater attribute is preferred to a plain tag. Stable test attributes remain preferred. Existing flattening, frame/shadow mapping and network features are retained.
+
+Representative generated relationships (text predicates additionally normalize non-breaking spaces):
+
+```xpath
+//li[@ng-repeat][.//a[normalize-space(.)='Bose Soundlink Bluetooth Speaker III']]
+//li[@ng-repeat][.//a[normalize-space(.)='Bose Soundlink Bluetooth Speaker III']]//a[contains(concat(' ',normalize-space(@class),' '),' productPrice ')]
+//li[@ng-repeat][.//a[normalize-space(.)='Bose Soundlink Bluetooth Speaker III']]//img
+```
+
+Duplicate names may require another scope or identity; this strategy does not claim that a name alone is unique when it is repeated. The analyser's other scoped strategies remain available.
+
+Verification: production JavaScript syntax checks and **33** automated JS/lxml fixture checks passed, including the supplied product/container strategy, changing prices, extra classes and duplicate names. Browser integration fixtures now also cover product cards, prices and images, but were not executed here. The Windows/.NET build, interactive UI and live Advantage Shopping page remain unverified in this environment.

@@ -477,13 +477,12 @@ public sealed class MainForm : Form
 
     private void AnalyseNetworkTraffic(object? sender, EventArgs e)
     {
-        if (!EnsureBrowser()) return;
         if (_networkForm is { IsDisposed: false })
         {
             _networkForm.Activate();
             return;
         }
-        _networkForm = new NetworkTrafficForm(_browser.Driver!);
+        _networkForm = new NetworkTrafficForm(_browser.Driver);
         _networkForm.Show(this);
     }
 
@@ -661,14 +660,30 @@ public sealed class MainForm : Form
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Locator basis", Width = 190 });
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Type", Width = 75 });
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Locator", Width = 480 });
-        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Reason / reusability", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
-        var allCandidates = result.DetailedCandidates.OrderByDescending(x => x.Score).ToList();
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Reason / reusability", Width = 360 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Recommendation", Width = 190 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Matches", Width = 70 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Scope / marker", Width = 180 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Execution", Width = 180 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Resilience", Width = 185 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Dependencies / risks", Width = 320 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Item container locator", Width = 420 });
+        grid.Columns[8].DisplayIndex = 0;
+        grid.Columns[9].DisplayIndex = 2;
+        // Preserve the analyser's recommendation order, including uniqueness.
+        var allCandidates = result.DetailedCandidates.ToList();
         void AddCandidateRow(LocatorCandidate candidate)
         {
             var i = grid.Rows.Add(candidate.Score, candidate.Unique ? "Yes" : "No",
                 candidate.Visible ? "Yes" : "No", candidate.Clickable ? "Yes" : "No",
-                candidate.Category, candidate.Type, candidate.Value, candidate.Rationale);
+                candidate.Category, candidate.Type, candidate.Value, candidate.Rationale,
+                candidate.Recommendation, candidate.Matches, candidate.Scope,
+                candidate.Execution, candidate.Resilience, candidate.Risk, candidate.ContainerLocator);
             grid.Rows[i].Tag = candidate;
+            if (candidate.Recommendation.Contains("Best overall", StringComparison.Ordinal))
+                grid.Rows[i].DefaultCellStyle.BackColor = Color.Honeydew;
+            foreach (DataGridViewCell cell in grid.Rows[i].Cells)
+                cell.ToolTipText = candidate.Rationale + Environment.NewLine + candidate.Risk;
         }
         foreach (var candidate in allCandidates) AddCandidateRow(candidate);
         var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(8) };
@@ -676,7 +691,16 @@ public sealed class MainForm : Form
         copy.Click += (_, _) => { if (grid.CurrentRow?.Tag is LocatorCandidate c) CopyText(c.Value); };
         var close = new Button { Text = "Close", AutoSize = true };
         close.Click += (_, _) => dialog.Close();
-        bottom.Controls.Add(close); bottom.Controls.Add(copy);
+        var copyContainer = new Button { Text = "Copy Item Container", AutoSize = true,
+            Enabled = grid.CurrentRow?.Tag is LocatorCandidate initial && initial.ContainerLocator.Length > 0 };
+        copyContainer.Click += (_, _) => {
+            if (grid.CurrentRow?.Tag is LocatorCandidate c && c.ContainerLocator.Length > 0)
+                CopyText(c.ContainerLocator);
+        };
+        grid.SelectionChanged += (_, _) => {
+            copyContainer.Enabled = grid.CurrentRow?.Tag is LocatorCandidate c && c.ContainerLocator.Length > 0;
+        };
+        bottom.Controls.Add(close); bottom.Controls.Add(copy); bottom.Controls.Add(copyContainer);
 
         var testPanel = new TableLayoutPanel
         {
@@ -758,7 +782,13 @@ public sealed class MainForm : Form
                 c.Value.Contains(search, StringComparison.OrdinalIgnoreCase) ||
                 c.Type.Contains(search, StringComparison.OrdinalIgnoreCase) ||
                 c.Category.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                c.Rationale.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+                c.Rationale.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                c.Recommendation.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                c.Scope.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                c.ContainerLocator.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                c.Execution.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                c.Resilience.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                c.Risk.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
             filteringRows = true;
             grid.SuspendLayout();
             try

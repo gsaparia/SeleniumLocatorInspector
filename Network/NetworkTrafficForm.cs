@@ -7,7 +7,7 @@ namespace SeleniumLocatorInspector.Network;
 
 public sealed class NetworkTrafficForm : Form
 {
-    private readonly IWebDriver _driver;
+    private readonly IWebDriver? _driver;
     private NetworkRecorder? _recorder;
     private readonly DataGridView _grid = new();
     private readonly TabControl _detailTabs = new() { Dock = DockStyle.Fill };
@@ -20,10 +20,18 @@ public sealed class NetworkTrafficForm : Form
     private readonly TextBox _responseHeaders = CreateDetailBox();
     private readonly TextBox _responseBody = CreateDetailBox();
     private int _selectionVersion;
+    private int _recordingEpoch;
+    private bool _stoppingRecording;
+    private Task? _stopTask;
+    private readonly SemaphoreSlim _bodyReadSlots = new(6, 6);
+    private readonly HashSet<string> _liveKeys = new();
+    private readonly Button _importHar = new() { Text = "Import Har", AutoSize = true };
+    private readonly Button _downloadHar = new() { Text = "Download Har", AutoSize = true };
+    private readonly Button _resend = new() { Text = "Resend Request", AutoSize = true, Enabled = false };
 
     private static TextBox CreateDetailBox() => new()
     {
-        ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Both,
+        ReadOnly = true, Multiline = true, MaxLength = int.MaxValue, ScrollBars = ScrollBars.Both,
         WordWrap = false, Dock = DockStyle.Fill,
         Font = new Font(FontFamily.GenericMonospace, 9)
     };
@@ -35,27 +43,34 @@ public sealed class NetworkTrafficForm : Form
     private readonly Dictionary<string, CapturedBody[]> _bodyCache = new();
     private readonly Dictionary<string, Task<CapturedBody[]>> _bodyFetches = new();
 
-    public NetworkTrafficForm(IWebDriver driver)
+    public NetworkTrafficForm(IWebDriver? driver = null)
     {
         _driver = driver;
+        _start.Enabled = driver != null;
+        if (driver == null) _state.Text = "Offline HAR analysis";
         Text = "Network Traffic";
         Width = 1200;
         Height = 750;
         StartPosition = FormStartPosition.CenterParent;
 
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(6) };
-        var reload = new Button { Text = "Reload page", AutoSize = true };
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(6), WrapContents = true };
+        var reload = new Button { Text = "Reload page", AutoSize = true, Enabled = driver != null };
         var clear = new Button { Text = "Clear", AutoSize = true };
         var copy = new Button { Text = "Copy URL", AutoSize = true };
-        bar.Controls.AddRange([_start, _stop, reload, clear, copy, _state]);
+        bar.Controls.AddRange([_start, _stop, reload, clear, copy, _importHar, _downloadHar, _resend, _state]);
+        _importHar.Click += async (_, _) => await ImportHarAsync();
+        _downloadHar.Click += async (_, _) => await DownloadHarAsync();
+        _resend.Click += async (_, _) => await ResendAsync();
         _start.Click += async (_, _) => await StartRecordingAsync();
         _stop.Click += async (_, _) => await StopRecordingAsync();
-        reload.Click += (_, _) => { try { _driver.Navigate().Refresh(); } catch (Exception ex) { ShowError(ex); } };
-        clear.Click += (_, _) => { _rows.Clear(); _items.Clear(); _bodyCache.Clear(); _bodyFetches.Clear(); _grid.Rows.Clear(); ClearDetails(); };
+        reload.Click += (_, _) => { try { _driver?.Navigate().Refresh(); } catch (Exception ex) { ShowError(ex); } };
+        clear.Click += (_, _) => { _rows.Clear(); _items.Clear(); _bodyCache.Clear(); _bodyFetches.Clear(); _liveKeys.Clear(); _grid.Rows.Clear(); ClearDetails(); };
         copy.Click += (_, _) => { if (Selected() is { } entry) Clipboard.SetText(entry.Url); };
 
         _grid.Dock = DockStyle.Fill;
         _grid.ReadOnly = true;
+        // Row indices remain stable for incoming network updates.
+        _grid.ColumnAdded += (_, e) => e.Column.SortMode = DataGridViewColumnSortMode.NotSortable;
         _grid.AllowUserToAddRows = false;
         _grid.RowHeadersVisible = false;
         _grid.MultiSelect = false;
@@ -68,7 +83,7 @@ public sealed class NetworkTrafficForm : Form
         _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Response type", Width = 140 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Time (ms)", Width = 85 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "URL", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
-        _grid.SelectionChanged += (_, _) => _ = ShowDetailsAsync();
+        _grid.SelectionChanged += (_, _) => { _resend.Enabled = Selected() != null; _ = ShowDetailsAsync(); };
 
         AddTab("Request headers", _requestHeaders);
         AddTab("Request body", _requestBody);
@@ -111,19 +126,32 @@ public sealed class NetworkTrafficForm : Form
 
     public async Task StartRecordingAsync()
     {
-        if (_recorder != null) return;
+        if (_recorder != null || _driver == null || _stoppingRecording) return;
         _start.Enabled = false;
         _state.Text = "Connecting…";
+        _liveKeys.Clear(); // Retain old cached rows, but drain only this recording.
         var recorder = new NetworkRecorder();
+        var epoch = ++_recordingEpoch;
         recorder.Updated += entry =>
         {
             if (!IsHandleCreated || IsDisposed) return;
-            try { BeginInvoke(() => UpdateRow(entry)); } catch (InvalidOperationException) { }
+            try { BeginInvoke(() =>
+            {
+                if (_stoppingRecording || epoch != _recordingEpoch) return;
+                _liveKeys.Add(entry.Key);
+                UpdateRow(entry);
+            }); } catch (InvalidOperationException) { }
         };
         recorder.Disconnected += message =>
         {
             if (!IsHandleCreated || IsDisposed) return;
-            try { BeginInvoke(() => { _state.Text = "Disconnected: " + message; _stop.Enabled = false; _ = StopRecordingAsync(); }); }
+            try { BeginInvoke(() =>
+            {
+                if (epoch != _recordingEpoch) return;
+                _state.Text = "Disconnected: " + message;
+                _stop.Enabled = false;
+                _ = StopRecordingAsync();
+            }); }
             catch (InvalidOperationException) { }
         };
         try
@@ -131,23 +159,77 @@ public sealed class NetworkTrafficForm : Form
             await recorder.StartAsync(_driver);
             if (IsDisposed) { await recorder.DisposeAsync(); return; }
             _recorder = recorder;
-            _state.Text = "Recording future requests";
+            _state.Text = "Recording — " + recorder.Mode;
             _stop.Enabled = true;
+            // Events can arrive while the initial subscription is being set up.
+            foreach (var entry in _items.Values.Where(e => _liveKeys.Contains(e.Key) && (e.State is "Complete" or "Failed")).ToArray())
+                _ = FetchBodiesAsync(entry);
         }
         catch (Exception ex)
         {
             await recorder.DisposeAsync();
             if (!IsDisposed) { _state.Text = "Not recording"; ShowError(ex); }
         }
-        finally { if (!IsDisposed) _start.Enabled = _recorder == null; }
+        finally { if (!IsDisposed) _start.Enabled = _driver != null && _recorder == null; }
     }
 
-    private async Task StopRecordingAsync()
+    private Task StopRecordingAsync()
     {
+        if (_stopTask != null) return _stopTask;
         var recorder = _recorder;
-        _recorder = null;
-        if (recorder != null) await recorder.DisposeAsync();
-        if (!IsDisposed) { _start.Enabled = true; _stop.Enabled = false; _state.Text = "Stopped"; }
+        if (recorder == null) return Task.CompletedTask;
+        _stoppingRecording = true;
+        ++_recordingEpoch; // The displayed recording ends at the Stop click.
+        _stop.Enabled = false;
+        _start.Enabled = false;
+        _state.Text = "Saving captured bodies…";
+        var snapshot = _items.Values.Where(e => _liveKeys.Contains(e.Key)).ToArray();
+        _stopTask = StopAndPreserveAsync(recorder, snapshot);
+        return _stopTask;
+    }
+
+    private async Task StopAndPreserveAsync(NetworkRecorder recorder, NetworkEntry[] snapshot)
+    {
+        // Ensure _stopTask is assigned even when no asynchronous reads are needed.
+        await Task.Yield();
+        try
+        {
+            if (!IsDisposed)
+            {
+                var completed = snapshot.Where(e => e.State is "Complete" or "Failed").ToArray();
+                await NetworkBodyRetention.PreserveAsync(completed,
+                    entry => FetchBodiesAsync(entry, retryUnavailable: true),
+                    (entry, bodies) =>
+                    {
+                        if (!_items.ContainsKey(entry.Key)) return;
+                        _bodyCache[entry.Key] = bodies;
+                        UpdateTypeCells(entry);
+                    });
+                foreach (var entry in snapshot.Where(e => e.State is not ("Complete" or "Failed")))
+                {
+                    if (!_items.ContainsKey(entry.Key) || _bodyCache.ContainsKey(entry.Key)) continue;
+                    _bodyCache[entry.Key] = [
+                        new("Body unavailable: request was still in progress when recording stopped.", null),
+                        new("Body unavailable: response had not completed when recording stopped.", null) ];
+                }
+            }
+        }
+        catch (Exception ex) { if (!IsDisposed) ShowError(ex); }
+        finally
+        {
+            // Keep the recorder available until every completed row has been archived.
+            _recorder = null;
+            await recorder.DisposeAsync();
+            _stoppingRecording = false;
+            _stopTask = null;
+            if (!IsDisposed)
+            {
+                _start.Enabled = _driver != null;
+                _stop.Enabled = false;
+                _state.Text = _driver == null ? "Offline HAR analysis" : "Stopped — captured bodies retained";
+                await ShowDetailsAsync();
+            }
+        }
     }
 
     private void UpdateRow(NetworkEntry entry)
@@ -164,11 +246,9 @@ public sealed class NetworkTrafficForm : Form
         row.SetValues(entry.Method, entry.Status?.ToString() ?? "", entry.State,
             "", "", entry.DurationMs?.ToString("0") ?? "", entry.Url);
         UpdateTypeCells(entry);
-        var requestType = ResponseFormatter.HeaderType(entry.RequestHeaders);
-        var requestHasBody = entry.Method is "POST" or "PUT" or "PATCH";
-        if (entry.State == "Complete" &&
-            (IsGenericType(entry.MimeType) || (requestHasBody && IsGenericType(requestType))))
-            _ = FetchBodiesAsync(entry);
+        // Cache every completed response, including HTML, scripts, CSS and media,
+        // independently of row selection. Limit simultaneous reads below.
+        if (entry.State is "Complete" or "Failed") _ = FetchBodiesAsync(entry);
         var red = entry.State == "Failed" || (entry.Status.HasValue && entry.Status.Value != 200);
         row.DefaultCellStyle.ForeColor = red ? Color.Red : Color.Empty;
         row.DefaultCellStyle.SelectionForeColor = red ? Color.Red : Color.Empty;
@@ -184,10 +264,6 @@ public sealed class NetworkTrafficForm : Form
         if (_grid.CurrentRow == row) _ = ShowDetailsAsync();
     }
 
-    private static bool IsGenericType(string type) =>
-        string.IsNullOrWhiteSpace(type) || type.StartsWith("text/plain", StringComparison.OrdinalIgnoreCase) ||
-        type.StartsWith("application/octet-stream", StringComparison.OrdinalIgnoreCase);
-
     private void UpdateTypeCells(NetworkEntry entry)
     {
         if (!_rows.TryGetValue(entry.Key, out var index) || index >= _grid.Rows.Count) return;
@@ -200,32 +276,54 @@ public sealed class NetworkTrafficForm : Form
             bodies?[1].DisplayText ?? "", declaredResponse.Length > 0 ? declaredResponse : entry.MimeType, entry.Url);
     }
 
-    private Task<CapturedBody[]> FetchBodiesAsync(NetworkEntry entry)
+    private Task<CapturedBody[]> FetchBodiesAsync(NetworkEntry entry, bool retryUnavailable = false)
     {
-        if (_bodyCache.TryGetValue(entry.Key, out var cached)) return Task.FromResult(cached);
+        _bodyCache.TryGetValue(entry.Key, out var cached);
+        if (cached != null && (!retryUnavailable || cached.All(b => b.Bytes != null))) return Task.FromResult(cached);
+        if (entry.State is not ("Complete" or "Failed")) return Task.FromResult(new[] {
+            new CapturedBody("Body pending. Select the request again after it completes.", null),
+            new CapturedBody("Body pending. Select the request again after it completes.", null) });
         if (_bodyFetches.TryGetValue(entry.Key, out var existing)) return existing;
         var recorder = _recorder;
-        if (recorder == null) return Task.FromResult(new[] {
-            new CapturedBody("Body unavailable: recording has stopped.", null),
-            new CapturedBody("Body unavailable: recording has stopped.", null) });
-        var fetch = Task.WhenAll(recorder.GetBodyAsync(entry, "request"),
-            recorder.GetBodyAsync(entry, "response"));
+        if (recorder == null) return Task.FromResult(cached ?? new[] {
+            new CapturedBody("Body unavailable: this request body was not captured before recording ended.", null),
+            new CapturedBody("Body unavailable: this response body was not captured before recording ended.", null) });
+        var fetch = ReadAndCacheBodiesAsync(entry, recorder, cached);
         _bodyFetches[entry.Key] = fetch;
-        _ = FinishBodyFetchAsync(entry, fetch);
+        _ = FinishBodyFetchAsync(entry.Key, fetch);
         return fetch;
     }
 
-    private async Task FinishBodyFetchAsync(NetworkEntry entry, Task<CapturedBody[]> fetch)
+    private async Task<CapturedBody[]> ReadAndCacheBodiesAsync(NetworkEntry entry, NetworkRecorder recorder, CapturedBody[]? prior)
     {
+        await _bodyReadSlots.WaitAsync();
         try
         {
-            var bodies = await fetch;
-            if (IsDisposed || !_items.ContainsKey(entry.Key)) return;
-            if (entry.State is "Complete" or "Failed") _bodyCache[entry.Key] = bodies;
-            UpdateTypeCells(_items[entry.Key]);
+            var bodies = await Task.WhenAll(recorder.GetBodyAsync(entry, "request"), recorder.GetBodyAsync(entry, "response"));
+            // A retry must never discard bytes already captured successfully.
+            if (prior != null)
+                for (var i = 0; i < bodies.Length; i++)
+                    if (bodies[i].Bytes == null && prior[i].Bytes != null) bodies[i] = prior[i];
+            if (!IsDisposed && _items.ContainsKey(entry.Key) && (entry.State is "Complete" or "Failed"))
+            {
+                _bodyCache[entry.Key] = bodies;
+                UpdateTypeCells(_items[entry.Key]);
+            }
+            return bodies;
         }
+        finally { _bodyReadSlots.Release(); }
+    }
+
+    private async Task FinishBodyFetchAsync(string key, Task<CapturedBody[]> fetch)
+    {
+        try { await fetch; }
         catch { /* A closing browser may end an in-flight body query. */ }
-        finally { _bodyFetches.Remove(entry.Key); }
+        finally
+        {
+            // Clear can start a new fetch for the same key; leave that one intact.
+            if (_bodyFetches.TryGetValue(key, out var current) && ReferenceEquals(current, fetch))
+                _bodyFetches.Remove(key);
+        }
     }
 
     private NetworkEntry? Selected() =>
@@ -271,8 +369,9 @@ public sealed class NetworkTrafficForm : Form
         var recorder = _recorder;
         if (recorder == null)
         {
-            _requestBody.Text = "Body unavailable: recording has stopped.";
-            _responseBody.Text = "Body unavailable: recording has stopped.";
+            var unavailable = await FetchBodiesAsync(item);
+            _requestBody.Text = unavailable[0].DisplayText;
+            _responseBody.Text = unavailable[1].DisplayText;
             return;
         }
         var bodies = await FetchBodiesAsync(item);
@@ -377,6 +476,89 @@ public sealed class NetworkTrafficForm : Form
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         try { File.WriteAllBytes(dialog.FileName, bodies[1].Bytes); }
         catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async Task ImportHarAsync()
+    {
+        using var open = new OpenFileDialog { Filter = "HTTP Archive|*.har|All files|*.*", CheckFileExists = true };
+        if (open.ShowDialog(this) != DialogResult.OK) return;
+        _importHar.Enabled = false;
+        try
+        {
+            // Parse completely before changing the grid: a bad file cannot
+            // partially overwrite current recording or previously imported data.
+            var imported = await Task.Run(() => HarImporter.LoadAsync(open.FileName));
+            if (IsDisposed) return;
+            _grid.SuspendLayout();
+            try
+            {
+                foreach (var capture in imported)
+                {
+                    _bodyCache[capture.Entry.Key] = capture.Bodies;
+                    UpdateRow(capture.Entry);
+                }
+            }
+            finally { _grid.ResumeLayout(); }
+            if (imported.Count > 0) _grid.CurrentCell = _grid.Rows[_rows[imported[0].Entry.Key]].Cells[0];
+            MessageBox.Show(this, "Imported " + imported.Count + " requests from " + Path.GetFileName(open.FileName) + ".", "Import Har");
+        }
+        catch (Exception ex) { if (!IsDisposed) ShowError(ex); }
+        finally { if (!IsDisposed) _importHar.Enabled = true; }
+    }
+
+    private async Task DownloadHarAsync()
+    {
+        var snapshot = _items.Values.ToArray();
+        if (snapshot.Length == 0)
+        {
+            MessageBox.Show(this, "Record requests before exporting a HAR file.", "Network Traffic");
+            return;
+        }
+        using var save = new SaveFileDialog {
+            FileName = "network-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".har",
+            DefaultExt = "har", Filter = "HTTP Archive|*.har", AddExtension = true
+        };
+        if (save.ShowDialog(this) != DialogResult.OK) return;
+        _downloadHar.Enabled = false;
+        try
+        {
+            var captures = new List<(NetworkEntry Entry, CapturedBody[] Bodies)>();
+            // Fetch in small batches rather than flooding the browser with body commands.
+            foreach (var batch in snapshot.Chunk(8))
+            {
+                var bodies = await Task.WhenAll(batch.Select(entry => FetchBodiesAsync(entry)));
+                if (IsDisposed) return;
+                for (var i = 0; i < batch.Length; i++) captures.Add((batch[i], bodies[i]));
+            }
+            await HarExporter.SaveAsync(save.FileName, captures);
+            if (!IsDisposed) MessageBox.Show(this, "Exported " + captures.Count + " requests.", "Download Har");
+        }
+        catch (Exception ex) { if (!IsDisposed) ShowError(ex); }
+        finally { if (!IsDisposed) _downloadHar.Enabled = true; }
+    }
+
+    private async Task ResendAsync()
+    {
+        var entry = Selected();
+        if (entry == null) return;
+        _resend.Enabled = false;
+        try
+        {
+            var bodies = await FetchBodiesAsync(entry);
+            if (IsDisposed) return;
+            using var dialog = new ResendRequestForm(entry, bodies[0]);
+            dialog.RequestSent += result =>
+            {
+                if (IsDisposed) return;
+                _bodyCache[result.Entry.Key] = result.Bodies;
+                UpdateRow(result.Entry);
+                _grid.CurrentCell = _grid.Rows[_rows[result.Entry.Key]].Cells[0];
+                _ = ShowDetailsAsync();
+            };
+            dialog.ShowDialog(this);
+        }
+        catch (Exception ex) { if (!IsDisposed) ShowError(ex); }
+        finally { if (!IsDisposed) _resend.Enabled = Selected() != null; }
     }
 
     private void ShowError(Exception exception) =>

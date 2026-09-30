@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Management;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -12,20 +11,14 @@ public sealed record ExistingWebDriverSession(
     int ProcessId,
     int Port,
     string SessionId,
-    Uri ServerUri);
+    Uri ServerUri,
+    JsonElement Capabilities);
 
 public static class WebDriverDiscovery
 {
     private static readonly HttpClient Http = new()
     {
         Timeout = TimeSpan.FromMilliseconds(700)
-    };
-
-    private static readonly Dictionary<string, string> DriverToBrowser = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["msedgedriver"] = "Edge",
-        ["chromedriver"] = "Chrome",
-        ["geckodriver"] = "Firefox"
     };
 
     public static IReadOnlyList<ExistingWebDriverSession> FindFirstSessions()
@@ -57,7 +50,8 @@ public static class WebDriverDiscovery
                             process.Id,
                             port,
                             session.SessionId,
-                            server));
+                            server,
+                            session.Capabilities.Clone()));
                     }
                 }
                 catch
@@ -116,7 +110,7 @@ public static class WebDriverDiscovery
 
             sessions.Add(new SessionInfo(
                 id,
-                item.TryGetProperty("capabilities", out var caps) ? caps : default));
+                item.TryGetProperty("capabilities", out var caps) ? caps.Clone() : default));
         }
 
         return sessions;

@@ -6,17 +6,13 @@ using OpenQA.Selenium;
 
 namespace SeleniumLocatorInspector.Network;
 
-public sealed record CapturedBody(string DisplayText, byte[]? Bytes);
-
-public sealed record NetworkEntry(
-    string Key, string Id, string Url, string Method, string State,
-    int? Status, string MimeType, double? DurationMs, double? StartedAt,
-    string RequestHeaders, string ResponseHeaders, string Error, string Context);
-
-/// <summary>Owns one BiDi connection; does not take control of the WebDriver session.</summary>
+/// <summary>Uses a BiDi connection or a CDP fallback without taking control of the WebDriver session.</summary>
 public sealed class NetworkRecorder : IAsyncDisposable
 {
     private readonly Dictionary<string, NetworkEntry> _entries = new();
+    private readonly string _captureId = Guid.NewGuid().ToString("N");
+    private CdpNetworkRecorder? _cdp;
+    public string Mode => _cdp == null ? "BiDi" : "DevTools (current tab)";
     private readonly ClientWebSocket _socket = new();
     private readonly CancellationTokenSource _stop = new();
     private Task? _reader;
@@ -24,17 +20,41 @@ public sealed class NetworkRecorder : IAsyncDisposable
     private readonly Dictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
     private int _nextCommand = 2;
     private readonly Dictionary<string, string> _collectors = new();
-    public bool CanReadRequestBody => _collectors.ContainsKey("request");
-    public bool CanReadResponseBody => _collectors.ContainsKey("response");
+    public bool CanReadRequestBody => _cdp != null || _collectors.ContainsKey("request");
+    public bool CanReadResponseBody => _cdp != null || _collectors.ContainsKey("response");
     public event Action<NetworkEntry>? Updated;
     public event Action<string>? Disconnected;
 
     public async Task StartAsync(IWebDriver driver)
     {
         var url = (driver as IHasCapabilities)?.Capabilities.GetCapability("webSocketUrl")?.ToString();
-        if (string.IsNullOrWhiteSpace(url))
-            throw new InvalidOperationException("This WebDriver session has no BiDi WebSocket. Relaunch the browser using this version of the inspector, then try again.");
+        Exception? bidiFailure = null;
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            try { await StartBiDiAsync(url); return; }
+            catch (Exception ex) when (ex is WebSocketException or OperationCanceledException or InvalidOperationException or IOException or UriFormatException)
+            {
+                bidiFailure = ex;
+                _socket.Dispose();
+            }
+        }
+        try
+        {
+            var endpoint = await DevToolsEndpoint.ResolveAsync(driver);
+            _cdp = new CdpNetworkRecorder();
+            _cdp.Updated += entry => Updated?.Invoke(entry);
+            _cdp.Disconnected += message => Disconnected?.Invoke(message);
+            await _cdp.StartAsync(endpoint);
+        }
+        catch (Exception ex) when (bidiFailure != null)
+        {
+            throw new InvalidOperationException("BiDi recording could not connect: " + bidiFailure.Message +
+                Environment.NewLine + "DevTools fallback: " + ex.Message, ex);
+        }
+    }
 
+    private async Task StartBiDiAsync(string url)
+    {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await _socket.ConnectAsync(new Uri(url), timeout.Token);
         var subscribe = JsonSerializer.Serialize(new
@@ -99,6 +119,7 @@ public sealed class NetworkRecorder : IAsyncDisposable
 
     public async Task<CapturedBody> GetBodyAsync(NetworkEntry entry, string dataType)
     {
+        if (_cdp != null) return await _cdp.GetBodyAsync(entry, dataType);
         if (!_collectors.TryGetValue(dataType, out var collector))
             return new("Body collection is not supported by this browser session.", null);
         if (entry.State is not ("Complete" or "Failed"))
@@ -230,7 +251,7 @@ public sealed class NetworkRecorder : IAsyncDisposable
         var id = GetString(request, "request");
         if (id.Length == 0) return;
         var redirect = GetString(data, "redirectCount");
-        var key = id + ":" + redirect;
+        var key = _captureId + ":" + id + ":" + redirect;
         _entries.TryGetValue(key, out var old);
         var response = data.TryGetProperty("response", out var value) ? value : default;
         var stamp = GetNumber(data, "timestamp");
@@ -285,6 +306,7 @@ public sealed class NetworkRecorder : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_cdp != null) await _cdp.DisposeAsync();
         _stop.Cancel();
         _socket.Dispose();
         if (_reader != null)

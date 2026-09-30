@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Network/NetworkBodyRetention.cs" Link="NetworkBodyRetention.cs" />
+    <Compile Include="../Network/NetworkModels.cs" Link="NetworkModels.cs" />
+    <Compile Include="../Network/HttpCapture.cs" Link="HttpCapture.cs" />
+    <Compile Include="../Network/HarImporter.cs" Link="HarImporter.cs" />
+    <Compile Include="../Network/CdpCaptureState.cs" Link="CdpCaptureState.cs" />
+    <Compile Include="../Network/CdpNetworkRecorder.cs" Link="CdpNetworkRecorder.cs" />
+    <Compile Include="../Network/HarExporter.cs" Link="HarExporter.cs" />
+    <Compile Include="../Network/RequestReplay.cs" Link="RequestReplay.cs" />
+    <Compile Include="../Network/ResponseFormatter.cs" Link="ResponseFormatter.cs" />
+  </ItemGroup>
+</Project>
