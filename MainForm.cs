@@ -43,7 +43,7 @@ public sealed class MainForm : Form
     {
         _inspectorScript = LoadInspectorScript();
 
-        Text = "Selenium Locator Inspector";
+        Text = "v27 Selenium Locator Inspector";
         Width = 1250;
         Height = 900;
         StartPosition = FormStartPosition.CenterScreen;
@@ -704,55 +704,110 @@ public sealed class MainForm : Form
 
         var testPanel = new TableLayoutPanel
         {
-            Dock = DockStyle.Top,
-            Height = 76,
-            Padding = new Padding(8, 6, 8, 4),
-            ColumnCount = 2,
-            RowCount = 2
+            Dock = DockStyle.Top, Height = 235, Padding = new Padding(8, 6, 8, 4),
+            ColumnCount = 2, RowCount = 5
         };
         testPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        testPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
-        testPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-        testPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+        testPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
+        foreach (var height in new[] { 32, 30, 72, 32, 55 })
+            testPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
         var locatorInput = new TextBox
         {
-            Dock = DockStyle.Fill,
-            PlaceholderText = "Enter a CSS selector or XPath",
+            Dock = DockStyle.Fill, PlaceholderText = "Enter a CSS selector or XPath",
             Text = (grid.CurrentRow?.Tag as LocatorCandidate)?.Value ?? ""
         };
         var testButton = new Button { Text = "Test Locator", Dock = DockStyle.Fill };
-        var testStatus = new Label { Dock = DockStyle.Fill, AutoEllipsis = true,
-            Text = "Enter a locator and click Test Locator." };
-        testPanel.Controls.Add(locatorInput, 0, 0);
-        testPanel.Controls.Add(testButton, 1, 0);
-        testPanel.Controls.Add(testStatus, 0, 1);
-        testPanel.SetColumnSpan(testStatus, 2);
-        testButton.Click += (_, _) => {
+        using var boldValueFont = new Font(dialog.Font, FontStyle.Bold);
+        using var dimensionTip = new ToolTip();
+        var statusRow = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, AutoScroll = true };
+        Label Metric(string title)
+        {
+            statusRow.Controls.Add(new Label { Text = title + ":", AutoSize = true, Margin = new Padding(0, 4, 3, 0) });
+            var value = new Label { Text = "—", AutoSize = true, Font = boldValueFont, Margin = new Padding(0, 4, 12, 0) };
+            statusRow.Controls.Add(value);
+            return value;
+        }
+        var countValue = Metric("Matches");
+        var selectedValue = Metric("Selected element");
+        var visibleValue = Metric("Visible");
+        var clickableValue = Metric("Clickable");
+        var widthValue = Metric("Width (px)");
+        var heightValue = Metric("Height (px)");
+        var testStatus = new Label { AutoSize = true, Margin = new Padding(0, 4, 0, 0) };
+        statusRow.Controls.Add(testStatus);
+        void ShowTest(LocatorTestResult test)
+        {
+            countValue.Text = test.Count.ToString();
+            countValue.ForeColor = test.Count > 0 ? Color.DarkGreen : Color.DarkRed;
+            void YesNo(Label value, bool yes)
+            {
+                value.Text = yes ? "Yes" : "No";
+                value.ForeColor = yes ? Color.DarkGreen : Color.DarkRed;
+            }
+            YesNo(selectedValue, test.SelectedElementMatched);
+            YesNo(visibleValue, test.Visible);
+            YesNo(clickableValue, test.Clickable);
+            widthValue.Text = test.Width?.ToString("0.##") ?? "—";
+            heightValue.Text = test.Height?.ToString("0.##") ?? "—";
+            dimensionTip.SetToolTip(widthValue, test.DimensionsOf + ": rendered bounding rectangle in CSS pixels.");
+            dimensionTip.SetToolTip(heightValue, test.DimensionsOf + ": rendered bounding rectangle in CSS pixels.");
+            testStatus.ForeColor = Color.DarkRed;
+            testStatus.Text = test.Error == null ? "" : test.Error;
+        }
+        void RunLocatorTest()
+        {
             var locator = locatorInput.Text.Trim();
-            if (locator.Length == 0)
-            {
-                testStatus.Text = "Enter a CSS selector or XPath first.";
-                return;
-            }
-            try
-            {
-                var test = _inspector!.TestLocator(locator, result.SelectionIndex, _inspectorScript);
-                testStatus.ForeColor = test.Error == null ? System.Drawing.SystemColors.ControlText : System.Drawing.Color.DarkRed;
-                testStatus.Text = test.Error == null
-                    ? $"Matches: {test.Count} | Selected element: {(test.SelectedElementMatched ? "Yes" : "No")} | Visible: {(test.Visible ? "Yes" : "No")} | Clickable: {(test.Clickable ? "Yes" : "No")}"
-                    : $"Invalid locator: {test.Error}";
-            }
-            catch (Exception ex)
-            {
-                testStatus.ForeColor = System.Drawing.Color.DarkRed;
-                testStatus.Text = $"Unable to test locator: {ex.Message}";
-            }
-        };
+            if (locator.Length == 0) { ShowTest(new LocatorTestResult { Error = "Enter a CSS selector or XPath first." }); return; }
+            try { ShowTest(_inspector!.TestLocator(locator, result.SelectionIndex, _inspectorScript)); }
+            catch (Exception ex) { ShowTest(new LocatorTestResult { Error = "Unable to test locator: " + ex.Message }); }
+        }
+        testButton.Click += (_, _) => RunLocatorTest();
         locatorInput.KeyDown += (_, e) => {
             if (e.KeyCode != System.Windows.Forms.Keys.Enter) return;
             e.SuppressKeyPress = true;
             testButton.PerformClick();
         };
+        var javascriptInput = new TextBox
+        {
+            Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Both, WordWrap = false,
+            Text = "return getText();",
+            PlaceholderText = "JavaScript using element, setValue, setChecked, selectValue or getText"
+        };
+        var javascriptButton = new Button { Text = "Test JavaScript", Dock = DockStyle.Fill };
+        var javascriptOutput = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true,
+            ScrollBars = ScrollBars.Vertical, Text = "JavaScript runs against exactly one match of the Test Locator above." };
+        var examples = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, AutoScroll = true };
+        examples.Controls.Add(new Label { AutoSize = true, Text = "JavaScript example:", Margin = new Padding(0, 5, 8, 0) });
+        var action = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 155 };
+        action.Items.AddRange(new object[] { "Click", "Enter text", "Tick checkbox", "Untick checkbox", "Select dropdown", "Get text" });
+        var scripts = new[] { "element.click();", "return setValue('your text');", "return setChecked(true);",
+            "return setChecked(false);", "return selectValue('option-value');", "return getText();" };
+        action.SelectedIndexChanged += (_, _) => { if (action.SelectedIndex >= 0) javascriptInput.Text = scripts[action.SelectedIndex]; };
+        examples.Controls.Add(action);
+        examples.Controls.Add(new Label { AutoSize = true, Text = "Edit the example, then click Test JavaScript. Use return to display a value.", Margin = new Padding(8, 5, 0, 0) });
+        javascriptButton.Click += async (_, _) => {
+            var locator = locatorInput.Text.Trim();
+            var script = javascriptInput.Text;
+            if (locator.Length == 0 || string.IsNullOrWhiteSpace(script))
+            { javascriptOutput.Text = "Enter a locator and JavaScript first."; javascriptOutput.ForeColor = Color.DarkRed; return; }
+            javascriptOutput.Text = "Running JavaScript…";
+            dialog.Enabled = false;
+            try
+            {
+                var execution = await System.Threading.Tasks.Task.Run(() => _inspector!.TestJavaScript(locator, script, _inspectorScript));
+                javascriptOutput.ForeColor = execution.Success ? Color.DarkGreen : Color.DarkRed;
+                javascriptOutput.Text = execution.Success ? execution.Result : "JavaScript failed: " + execution.Error;
+                RunLocatorTest();
+            }
+            catch (Exception ex) { javascriptOutput.ForeColor = Color.DarkRed; javascriptOutput.Text = "Unable to run JavaScript: " + ex.Message; }
+            finally { dialog.Enabled = true; }
+        };
+        testPanel.Controls.Add(locatorInput, 0, 0);
+        testPanel.Controls.Add(testButton, 1, 0);
+        testPanel.Controls.Add(statusRow, 0, 1); testPanel.SetColumnSpan(statusRow, 2);
+        testPanel.Controls.Add(javascriptInput, 0, 2); testPanel.Controls.Add(javascriptButton, 1, 2);
+        testPanel.Controls.Add(examples, 0, 3); testPanel.SetColumnSpan(examples, 2);
+        testPanel.Controls.Add(javascriptOutput, 0, 4); testPanel.SetColumnSpan(javascriptOutput, 2);
 
         var filterPanel = new TableLayoutPanel
         {

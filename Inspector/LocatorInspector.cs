@@ -82,6 +82,19 @@ public sealed class LocatorInspector
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new LocatorTestResult();
     }
 
+    public LocatorJavaScriptResult TestJavaScript(string locator, string script, string inspectorScript)
+    {
+        _js.ExecuteScript(inspectorScript);
+        var json = _js.ExecuteAsyncScript(
+            "var done = arguments[arguments.length - 1]; " +
+            "window.__seleniumLocatorInspector.executeLocatorJavaScript(arguments[0], arguments[1])" +
+            ".then(function(result) { done(JSON.stringify(result)); }, " +
+            "function(error) { done(JSON.stringify({ success:false, error:String(error) })); });",
+            locator, script) as string;
+        return JsonSerializer.Deserialize<LocatorJavaScriptResult>(json ?? "{}",
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new LocatorJavaScriptResult();
+    }
+
     public LocatorResult? GetSelectedResult()
     {
         var json = _js.ExecuteScript(
@@ -102,8 +115,19 @@ public sealed class LocatorInspector
 public sealed class LocatorTestResult
 {
     public int Count { get; set; }
+    public double? Width { get; set; }
+    public double? Height { get; set; }
+    public string DimensionsOf { get; set; } = "";
     public bool SelectedElementMatched { get; set; }
     public bool Visible { get; set; }
     public bool Clickable { get; set; }
+    public string? Error { get; set; }
+}
+
+public sealed class LocatorJavaScriptResult
+{
+    public bool Success { get; set; }
+    public int Count { get; set; }
+    public string Result { get; set; } = "";
     public string? Error { get; set; }
 }

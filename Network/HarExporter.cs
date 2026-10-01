@@ -8,7 +8,7 @@ internal static class HarExporter
     {
         var entries = captures.OrderBy(c => c.Entry.StartedAt).Select(c => BuildEntry(c.Entry, c.Bodies)).ToArray();
         var document = new { log = new {
-            version = "1.2", creator = new { name = "Selenium Locator Inspector", version = "24" },
+            version = "1.2", creator = new { name = "Selenium Locator Inspector", version = "27" },
             entries, comment = "Exports captured data only. HTTP versions, wire sizes and detailed timing phases are unavailable. Cookies remain in headers." } };
         await using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 65536, true);
         await JsonSerializer.SerializeAsync(stream, document, new JsonSerializerOptions { WriteIndented = true });

@@ -165,3 +165,58 @@ Representative generated relationships (text predicates additionally normalize n
 Duplicate names may require another scope or identity; this strategy does not claim that a name alone is unique when it is repeated. The analyser's other scoped strategies remain available.
 
 Verification: production JavaScript syntax checks and **33** automated JS/lxml fixture checks passed, including the supplied product/container strategy, changing prices, extra classes and duplicate names. Browser integration fixtures now also cover product cards, prices and images, but were not executed here. The Windows/.NET build, interactive UI and live Advantage Shopping page remain unverified in this environment.
+
+
+## v25 — Equivalent locator deduplication
+
+Locator Analysis displays one row for equivalent generated XPath expressions. The canonical key unifies the outer document-root `.//` and `//` forms, insignificant syntax whitespace, and equivalent single/double-quoted string literals. It also removes exact CSS duplicates after trimming outer whitespace.
+
+For example, these now produce one row:
+
+```xpath
+.//sec-view[.//label[normalize-space(.)='Email field is required']]//input
+//sec-view[.//label[normalize-space(.)='Email field is required']]//input
+```
+
+Deduplication runs during candidate construction and again after ranking, before clone resilience checks. The ranked representative keeps its rationale and semantic evidence; item-container metadata is retained where available. Main results and generated code use the same reduced recommendation list. Injection upgrades older inspector scripts in hooked browsers.
+
+This is conservative syntax equivalence: text within literals, predicate-relative `.//`, child-versus-descendant paths, distinct conditions, and distinct CSS/XPath strategies remain separate. Locators are not merged just because they currently match the same element.
+
+Verification: JavaScript syntax checks and **49 automated production-JS/lxml checks** passed, including the reported selector pair, grouped forms, quote/whitespace variants, candidate construction/ranking, and preservation of genuinely different relationships. The browser integration script also checks that each analysis result has unique canonical locator keys. Windows/.NET compilation, UI and live-page browser validation remain unavailable in this environment.
+
+
+## v26 — Locator test dimensions, JavaScript actions and simpler text XPath
+
+- Matches is bold and green when greater than zero, red at zero. Selected element, Visible and Clickable values are bold and green for Yes, red for No.
+- Test results include rendered width and height in CSS pixels (two decimal places). Dimensions refer to the selected match if present, otherwise the first match; their tooltip identifies which. No matches show no dimensions.
+- The JavaScript textbox runs against the locator entered above it. Exactly one original element must match. Examples cover click, entering text, tick/untick, native dropdown values and get text. Returned values and exceptions appear in the result box; asynchronous scripts are supported. The UI remains responsive and disables other dialog actions during execution.
+- Script variables: `element`, `elements` (the single match), `locator`, `setValue`, `setChecked`, `selectValue`, `getText`. Scripts execute in the matched element's document context. Examples:
+
+```javascript
+element.click();
+return setValue('your text');
+return setChecked(true);       // false to untick
+return selectValue('option-value');
+return getText();
+```
+
+`setValue` uses the native value setter and bubbles input/change events. `setChecked` clicks only if the checkbox needs changing. `selectValue` supports native select controls by option value; custom dropdowns can use editable JavaScript. These are browser JavaScript actions rather than WebDriver interaction commands.
+
+Generated text XPath predicates no longer use `translate()`. Non-breaking spaces are preserved in string literals. Direct equality is preferred for clean text; `normalize-space()` is retained for XML whitespace where needed. Existing generated expressions are simplified only when the expression without normalization preserves the same current matched nodes. Both target locators and item-container locators are simplified before deduplication/ranking. This inference is based on the current DOM, and future whitespace changes can still affect a locator.
+
+Verification: source syntax checks and **70 production JavaScript/lxml fixture checks** passed, including dimensions, action helpers, ambiguity rejection, read-only/disabled controls, asynchronous results, error handling and conditional text normalization. Chromium integration fixtures cover the new actions and text simplification but were not run here. Windows/.NET compilation, coloured UI rendering and live browser integration remain unverified in this environment.
+
+
+## v27 — Shortest unique XPath per container/target family
+
+For a shared container path and target tag, Locator Analysis keeps only the shortest unique XPath matching the selected element. For example:
+
+```xpath
+//sec-view[.//label[.='Email field is required']]//input
+```
+
+The longer `//input[@name='emailContactUs']` and `//input[@type='text']` variants within that same container are removed when the shorter locator is unique. If plain `//input` is ambiguous, the shortest unique qualified variant remains. Independent direct-attribute strategies, different container paths, and child/descendant relationships stay separate; CSS locators are unaffected.
+
+Reduction runs after current-DOM match validation and deduplication, before resilience checks and final recommendations. Main results and generated Selenium code use the reduced list. This chooses length within a verified container family; future DOM changes may still require a more specific locator.
+
+Verification: JavaScript syntax checks and **78 production-JS/lxml checks** passed, including the supplied three-locator example, ambiguous bases, scoped relationships and quoted slashes. A Chromium integration fixture checks the displayed family is reduced to the base locator. Windows/.NET compilation, UI and live-browser validation remain unverified here.

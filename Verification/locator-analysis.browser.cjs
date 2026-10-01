@@ -37,9 +37,12 @@ const source = fs.readFileSync(path.join(__dirname,'../JavaScript/locator-inspec
           r.css === r.detailedCandidates.find(c => c.unique && c.type === 'CSS')?.value &&
           r.xpath === r.detailedCandidates.find(c => c.unique && c.type === 'XPATH')?.value;
       });
-      return {billing,save,row,shadow,frame,productPrice,productImage,productCard,consistent,unchanged:before===document.body.outerHTML};
+      const deduplicated = [billing,save,row,shadow,frame,productPrice,productImage,productCard].every(r =>
+        new Set(r.detailedCandidates.map(c => analyser.canonicalLocatorKey(c))).size === r.detailedCandidates.length);
+      return {billing,save,row,shadow,frame,productPrice,productImage,productCard,consistent,deduplicated,unchanged:before===document.body.outerHTML};
     });
     assert.ok(result.unchanged, 'clone resilience checks must not modify the live page');
+    assert.ok(result.deduplicated, 'analysis outputs no equivalent locator rows');
     assert.ok(result.consistent, 'recommendations, main locators and generated code agree');
     assert.ok(result.billing.detailedCandidates.some(c => c.category==='Section and field relationship' && c.value.includes('Billing') && c.value.includes('Email address')));
     assert.ok(!result.billing.detailedCandidates.some(c => c.recommendation && c.value.includes('$123')));
@@ -54,6 +57,42 @@ const source = fs.readFileSync(path.join(__dirname,'../JavaScript/locator-inspec
     assert.ok(result.productPrice.detailedCandidates.some(c => c.category==='Repeated item' && c.value.includes('@ng-repeat') && c.value.includes('productPrice') && !c.value.includes('299.99')));
     assert.ok(result.productImage.detailedCandidates.some(c => c.category==='Repeated item' && c.value.includes('@ng-repeat') && c.value.endsWith('//img')));
     assert.ok(result.productCard.detailedCandidates.some(c => c.category==='Repeated item' && c.value===c.containerLocator));
+    const scriptResults = await page.evaluate(async () => {
+      const panel = document.createElement('div');
+      panel.innerHTML = '<input id="script-input" style="width:120px;height:25px"><input id="script-checkbox" type="checkbox"><select id="script-select"><option value="one">One</option><option value="two">Two</option></select><button id="script-click">Click</button>';
+      document.body.appendChild(panel);
+      const analyser = window.__seleniumLocatorInspector;
+      let clicks = 0;
+      document.querySelector('#script-click').addEventListener('click', () => clicks++);
+      const input = await analyser.executeLocatorJavaScript('#script-input', "return setValue('hello');");
+      const tick = await analyser.executeLocatorJavaScript('#script-checkbox', 'return setChecked(true);');
+      const untick = await analyser.executeLocatorJavaScript('#script-checkbox', 'return setChecked(false);');
+      const select = await analyser.executeLocatorJavaScript('#script-select', "return selectValue('two');");
+      const click = await analyser.executeLocatorJavaScript('#script-click', 'element.click();');
+      const ambiguous = await analyser.executeLocatorJavaScript('input', 'element.click();');
+      const measure = analyser.testLocator('#script-input', -1);
+      const simple = analyser.generateLocators(document.querySelector('#script-click'));
+      return {input,tick,untick,select,click,clicks,ambiguous,measure,
+        translated:simple.detailedCandidates.some(c => c.value.includes('translate(')),
+        textSimplified:simple.detailedCandidates.some(c => c.value.includes("[.='Click']"))};
+    });
+    assert.ok(scriptResults.input.success && scriptResults.input.result==='hello');
+    assert.ok(scriptResults.tick.result==='true' && scriptResults.untick.result==='false');
+    assert.ok(scriptResults.select.result==='two');
+    assert.ok(scriptResults.click.success && scriptResults.clicks===1);
+    assert.ok(!scriptResults.ambiguous.success);
+    assert.ok(scriptResults.measure.width>0 && scriptResults.measure.height>0);
+    assert.ok(!scriptResults.translated && scriptResults.textSimplified);
+    const shortestResults = await page.evaluate(() => {
+      const field = document.createElement('sec-view');
+      field.innerHTML = '<label>Email field is required</label><input name="emailContactUs" type="text">';
+      document.body.appendChild(field);
+      const analyser = window.__seleniumLocatorInspector;
+      const analysed = analyser.generateLocators(field.querySelector('input'));
+      const base = "//sec-view[.//label[.='Email field is required']]//input";
+      return {base, values:analysed.detailedCandidates.filter(c => c.type==='XPATH' && c.value.startsWith(base)).map(c=>c.value)};
+    });
+    assert.deepEqual(shortestResults.values, [shortestResults.base]);
     console.log('Passed browser integration fixtures: fields, actions, rows, shadow DOM, frames, clone isolation and recommendation consistency.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode=1; });

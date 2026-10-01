@@ -1,6 +1,6 @@
 (function () {
     const previous = window.__seleniumLocatorInspector;
-    if (previous?.version === 24) return;
+    if (previous?.version === 27) return;
     // A hooked browser may still have an older inspector installed. Remove
     // its listeners/highlights before replacing it with the new analyser.
     if (previous) {
@@ -9,7 +9,7 @@
     }
 
     window.__seleniumLocatorInspector = {
-        version: 24,
+        version: 27,
         active: false,
         rectangleActive: false,
         previousElement: null,
@@ -504,7 +504,7 @@
                 // class must not prevent a shorter label-based relationship.
                 anchors.push({ value: "//" + parent.tagName.toLowerCase(), score: 65, reason: "container tag" });
                 for (const marker of markers) {
-                    const condition = "[.//" + marker.node.tagName.toLowerCase() + "[" + this.normalizedTextPredicate(marker.text) + "]]";
+                    const condition = "[.//" + marker.node.tagName.toLowerCase() + "[" + this.normalizedTextPredicate(marker.text, marker.node) + "]]";
                     for (const anchor of anchors) {
                         const container = anchor.value + condition;
                         const containers = query(container);
@@ -539,7 +539,7 @@
                     for (const marker of markers.filter(m => /^H[1-6]$|^(LEGEND|LABEL)$/.test(m.node.tagName) && m.text !== field.marker.text)) {
                         for (const anchor of anchors.slice(0, 3)) {
                             if (generated >= 140) break;
-                            const outer = anchor.value + "[.//" + marker.node.tagName.toLowerCase() + "[" + this.normalizedTextPredicate(marker.text) + "]]";
+                            const outer = anchor.value + "[.//" + marker.node.tagName.toLowerCase() + "[" + this.normalizedTextPredicate(marker.text, marker.node) + "]]";
                             const value = outer + field.value;
                             const matches = query(value);
                             if (matches.length !== 1 || matches[0] !== element) continue;
@@ -555,8 +555,12 @@
             }
         },
 
-        normalizedTextPredicate: function (text) {
-            return "normalize-space(translate(.,'\u00a0\u202f','  '))=" + this.xpathLiteral(text);
+        normalizedTextPredicate: function (text, node) {
+            const raw = node?.textContent ?? text;
+            // XPath 1.0 normalizes XML whitespace only. Preserve NBSP in the
+            // literal instead of introducing a translate() workaround.
+            const normalized = raw.replace(/[ \t\r\n]+/g," ").replace(/^ +| +$/g,"");
+            return (raw === normalized ? "." : "normalize-space(.)") + "=" + this.xpathLiteral(normalized);
         },
 
         candidateExecution: function (candidate, original) {
@@ -592,7 +596,7 @@
                 /(?:@id=|#[\w-]+)/.test(value) ? 35 :
                 /Associated label/.test(candidate.category) ? 36 :
                 candidate.association ? 36 : /@name=|\[name=/.test(value) ? 30 :
-                /normalize-space|@aria-label|aria-labelledby/.test(value) ? 29 : 18;
+                /normalize-space\(\s*\.\s*\)|\.\s*=|text\(\)\s*=|@aria-label|aria-labelledby/.test(value) ? 29 : 18;
             if (candidate.repeater) identity = Math.max(identity, 34);
             let stability = 25;
             const ownText = this.meaningfulText(element);
@@ -617,7 +621,7 @@
                     }
                 }
             }
-            if (/normalize-space/.test(value)) risks.push("Depends on displayed text; language changes may affect it");
+            if (/normalize-space\(\s*\.\s*\)|\.\s*=|text\(\)\s*=/.test(value)) risks.push("Depends on displayed text; language changes may affect it");
             let relationship = /container|section|label|Repeated item|Child element text/i.test(candidate.category) ? 16 : 10;
             if (candidate.containerCount > 1) { relationship -= 5; risks.push("Container expression matches multiple ancestors/components"); }
             if (candidate.controls > 1) relationship -= 5;
@@ -641,12 +645,190 @@
             return result;
         },
 
+        canonicalLocatorKey: function (candidate) {
+            const type = (candidate.type || "").toUpperCase();
+            const value = (candidate.value || "").trim();
+            if (type !== "XPATH") return JSON.stringify([type, value]);
+            // XPath is evaluated with the flattened DOCUMENT as its context.
+            // Tokenise instead of stripping all spaces: quoted text is data,
+            // and whitespace can separate identifiers/operators.
+            const tokens = [];
+            for (let i = 0; i < value.length;) {
+                const ch = value[i];
+                if (/\s/.test(ch)) { i++; continue; }
+                if (ch === "'" || ch === '"') {
+                    const end = value.indexOf(ch, i + 1);
+                    if (end < 0) return JSON.stringify([type, value]);
+                    tokens.push(["literal", value.slice(i + 1, end)]);
+                    i = end + 1;
+                    continue;
+                }
+                const word = value.slice(i).match(/^[A-Za-z_][A-Za-z0-9_.-]*/);
+                const number = value.slice(i).match(/^(?:\d+(?:\.\d*)?|\.\d+)/);
+                const pair = value.slice(i, i + 2);
+                const token = word?.[0] || number?.[0] ||
+                    (["//", "..", "::", "!=", "<=", ">="].includes(pair) ? pair : ch);
+                tokens.push(["syntax", token]);
+                i += token.length;
+            }
+            // Canonicalise ONLY the outer document-relative prefix. A .//
+            // inside a predicate is scoped to that element and must remain.
+            let prefix = 0;
+            while (tokens[prefix]?.[0] === "syntax" && tokens[prefix]?.[1] === "(") prefix++;
+            if (tokens[prefix]?.[0] === "syntax" && tokens[prefix]?.[1] === "." &&
+                tokens[prefix + 1]?.[0] === "syntax" && tokens[prefix + 1]?.[1] === "//")
+                tokens.splice(prefix, 1);
+            return JSON.stringify([type, tokens]);
+        },
+
+        deduplicateCandidates: function (candidates) {
+            // Input is recommendation-sorted, so the strongest representative
+            // retains its rationale, category and score.
+            const representatives = new Map();
+            for (const candidate of candidates) {
+                const key = this.canonicalLocatorKey(candidate);
+                const kept = representatives.get(key);
+                if (!kept) representatives.set(key, candidate);
+                else if (!kept.containerLocator && candidate.containerLocator)
+                    kept.containerLocator = candidate.containerLocator;
+            }
+            return Array.from(representatives.values());
+        },
+
+        simplifyTextLocator: function (candidate, snapshot) {
+            if (candidate.type !== "XPATH") return candidate;
+            let value = candidate.value;
+            const positions = [];
+            for (let i = 0; i < value.length;) {
+                if (value[i] === "'" || value[i] === '"') {
+                    const end = value.indexOf(value[i], i + 1);
+                    if (end < 0) break;
+                    i = end + 1; continue;
+                }
+                const match = value.slice(i).match(/^normalize-space\(\s*(\.|@[\w:-]+)\s*\)/);
+                if (match) { positions.push({start:i,length:match[0].length,argument:match[1]}); i += match[0].length; }
+                else i++;
+            }
+            const original = this.matchingClones(value, snapshot);
+            for (const part of positions.reverse()) {
+                const simplified = value.slice(0,part.start) + part.argument + value.slice(part.start+part.length);
+                try {
+                    const matches = this.matchingClones(simplified, snapshot);
+                    if (original.length && matches.length === original.length && original.every(n => matches.includes(n)))
+                        value = simplified;
+                } catch {}
+            }
+            candidate.value = value;
+            return candidate;
+        },
+
+        executeLocatorJavaScript: async function (locator, script) {
+            let matches = [];
+            try {
+                matches = this.findAllOriginal(locator);
+                if (matches.length !== 1) throw new Error("JavaScript requires exactly one locator match; found " + matches.length + ".");
+                const element = matches[0];
+                if (element.nodeType !== Node.ELEMENT_NODE) throw new Error("The locator must match an element.");
+                const win = element.ownerDocument.defaultView;
+                const notify = () => {
+                    element.dispatchEvent(new win.Event("input", {bubbles:true, composed:true}));
+                    element.dispatchEvent(new win.Event("change", {bubbles:true, composed:true}));
+                };
+                const setValue = value => {
+                    if (element.disabled || element.readOnly) throw new Error("The field is disabled or read-only.");
+                    if (!/^(INPUT|TEXTAREA)$/.test(element.tagName)) throw new Error("setValue requires an input or textarea.");
+                    const proto = element.tagName === "TEXTAREA" ? win.HTMLTextAreaElement.prototype : win.HTMLInputElement.prototype;
+                    const setter = Object.getOwnPropertyDescriptor(proto,"value")?.set;
+                    if (setter) setter.call(element,String(value)); else element.value = String(value);
+                    notify(); return element.value;
+                };
+                const setChecked = checked => {
+                    if (element.tagName !== "INPUT" || element.type !== "checkbox") throw new Error("setChecked requires a checkbox.");
+                    if (element.disabled) throw new Error("The checkbox is disabled.");
+                    if (element.checked !== !!checked) element.click();
+                    if (element.checked !== !!checked) throw new Error("The checkbox did not reach the requested state.");
+                    return element.checked;
+                };
+                const selectValue = value => {
+                    if (element.tagName !== "SELECT") throw new Error("selectValue requires a native select dropdown.");
+                    if (element.disabled) throw new Error("The dropdown is disabled.");
+                    const option = Array.from(element.options).find(o => o.value === String(value));
+                    if (!option || option.disabled || option.parentElement?.disabled) throw new Error("No enabled option has that value.");
+                    element.value = option.value; notify(); return element.value;
+                };
+                const getText = () => element.innerText ?? element.textContent ?? "";
+                const ScriptFunction = win.Function || Function;
+                const run = new ScriptFunction("element","elements","locator","setValue","setChecked","selectValue","getText",
+                    "return (async function(){\n" + script + "\n}).call(element);");
+                const result = await run(element,matches,locator,setValue,setChecked,selectValue,getText);
+                let display;
+                if (result === undefined) display = "Completed (no return value).";
+                else if (typeof result === "string") display = result;
+                else { try { display = JSON.stringify(result,null,2) ?? String(result); } catch { display = String(result); } }
+                return {success:true,count:matches.length,result:display,error:null};
+            } catch (error) {
+                return {success:false,count:matches.length,result:"",error:error.message || String(error)};
+            }
+        },
+
+        containerTargetFamily: function (candidate) {
+            if (candidate.type !== "XPATH" || !candidate.unique || !candidate.selectedTargetMatched) return null;
+            const value = candidate.value.trim();
+            let bracket = 0, paren = 0, start = -1;
+            for (let i = 0; i < value.length; i++) {
+                const ch = value[i];
+                if (ch === "'" || ch === '"') {
+                    const end = value.indexOf(ch,i+1);
+                    if (end < 0) return null;
+                    i = end; continue;
+                }
+                if (ch === "[") bracket++;
+                else if (ch === "]") bracket--;
+                else if (ch === "(") paren++;
+                else if (ch === ")") paren--;
+                else if (ch === "/" && bracket === 0 && paren === 0) {
+                    if (value[i+1] === "/") i++;
+                    start = i + 1;
+                }
+                if (bracket < 0 || paren < 0) return null;
+            }
+            if (start < 0 || bracket || paren) return null;
+            const prefix = value.slice(0,start);
+            // A scope predicate must belong to the container, rather than the
+            // target itself. Keep independent direct-attribute strategies.
+            if (!prefix.includes("[")) return null;
+            const target = value.slice(start).match(/^([A-Za-z_][\w:.-]*)(.*)$/);
+            if (!target || (target[2] && !(target[2].startsWith("[") && target[2].endsWith("]")))) return null;
+            return this.canonicalLocatorKey({type:"XPATH",value:prefix+target[1]});
+        },
+
+        keepShortestContainerTargets: function (candidates) {
+            const shortest = new Map();
+            for (const candidate of candidates) {
+                const family = this.containerTargetFamily(candidate);
+                if (!family) continue;
+                const previous = shortest.get(family);
+                if (!previous || candidate.value.length < previous.value.length) shortest.set(family,candidate);
+            }
+            return candidates.filter(candidate => {
+                const family = this.containerTargetFamily(candidate);
+                return !family || shortest.get(family) === candidate;
+            });
+        },
+
         rankCandidates: function (candidates, element, snapshot) {
+            for (const candidate of candidates) {
+                this.simplifyTextLocator(candidate, snapshot);
+                if (candidate.containerLocator)
+                    candidate.containerLocator = this.simplifyTextLocator({type:"XPATH",value:candidate.containerLocator}, snapshot).value;
+            }
             for (const candidate of candidates) this.evaluateCandidate(candidate, element, snapshot);
             const compare = (a,b) => Number(b.unique) - Number(a.unique) || b.score - a.score ||
                 Number(/data-(?:testid|test-id|cy|qa)/.test(b.value)) - Number(/data-(?:testid|test-id|cy|qa)/.test(a.value)) ||
                 Number(!!b.repeaterAttribute) - Number(!!a.repeaterAttribute) || a.value.length - b.value.length;
             candidates.sort(compare);
+            candidates = this.deduplicateCandidates(candidates);
+            candidates = this.keepShortestContainerTargets(candidates);
             const shortlist = candidates.filter(c => c.unique && !/data-frame/.test(c.value)).slice(0, 12);
             this.testCandidateResilience(shortlist, element, snapshot);
             candidates.sort(compare);
@@ -975,7 +1157,12 @@
                 const matches = this.findAllOriginal(locator);
                 this.highlightMatches(matches);
                 const selected = this.selectionElements[selectionIndex] || null;
+                const measured = selected && matches.includes(selected) ? selected : matches[0];
+                const bounds = measured?.getBoundingClientRect?.();
                 return {
+                    width: bounds ? Math.round(bounds.width * 100) / 100 : null,
+                    height: bounds ? Math.round(bounds.height * 100) / 100 : null,
+                    dimensionsOf: measured === selected && selected ? "Selected match" : measured ? "First match" : "No match",
                     count: matches.length,
                     selectedElementMatched: !!selected && matches.includes(selected),
                     visible: matches.some(element => this.isVisible(element)),
@@ -1241,7 +1428,7 @@
                 for (const marker of this.nearestTextMarkers(parent, element,
                     "label,legend,h1,h2,h3,h4,h5,h6,strong,span,div", 3))
                     anchors.push({ base: ".//" + ptag + "[.//" + marker.node.tagName.toLowerCase() +
-                        "[" + this.normalizedTextPredicate(marker.text) + "]]", score: 84,
+                        "[" + this.normalizedTextPredicate(marker.text, marker.node) + "]]", score: 84,
                         reason: "Meaningful container text: " + marker.text });
                 if (parent.children.length < 15) {
                     const directText = Array.from(parent.childNodes).filter(n => n.nodeType === Node.TEXT_NODE).map(n => n.nodeValue).join(" ").trim().replace(/\s+/g, " ");
@@ -1673,7 +1860,7 @@
                     for (const anchor of anchors) {
                         if (produced >= 36) break;
                         const container = anchor.value + "[.//" + marker.node.tagName.toLowerCase() +
-                            "[" + this.normalizedTextPredicate(marker.text) + "]]";
+                            "[" + this.normalizedTextPredicate(marker.text, marker.node) + "]]";
                         const containers = query(container);
                         // A unique child alone is insufficient: establish a
                         // unique business item before building the child path.
@@ -1733,13 +1920,15 @@
 
         buildDetailedCandidates: function (element, candidates, snapshot) {
             const out = [];
+            const byKey = new Map();
             const query = value => this.matchingClones(value, snapshot);
             const original = snapshot.map.get(element);
             const visible = this.isVisible(original);
             const clickable = this.isClickable(original);
             const add = (category, type, value, base, rationale, evidence = {}) => {
                 if (!value) return;
-                const existing = out.find(x => x.value === value && x.type === type);
+                const key = this.canonicalLocatorKey({ type, value });
+                const existing = byKey.get(key);
                 if (existing) {
                     // Retain semantic evidence when a structural generator found
                     // the same expression first.
@@ -1751,12 +1940,20 @@
                 try { matches = query(value); } catch { return; }
                 if (!matches.includes(element)) return;
                 const unique = matches.length === 1;
-                out.push({ category, type, value, score: this.candidateScore(value, base, unique),
-                    unique, visible, clickable, rationale, ...evidence });
+                const row = { category, type, value, score: this.candidateScore(value, base, unique),
+                    unique, visible, clickable, rationale, ...evidence };
+                out.push(row);
+                byKey.set(key, row);
             };
-            candidates.forEach(c => out.push({ category: "Direct attributes / text / structure", type: c.type,
-                value: c.value, score: c.score, unique: c.unique, visible, clickable,
-                rationale: "Generated from the element's own attributes, text, or DOM structure." }));
+            candidates.forEach(c => {
+                const key = this.canonicalLocatorKey(c);
+                if (byKey.has(key)) return;
+                const row = { category: "Direct attributes / text / structure", type: c.type,
+                    value: c.value, score: c.score, unique: c.unique, visible, clickable,
+                    rationale: "Generated from the element's own attributes, text, or DOM structure." };
+                out.push(row);
+                byKey.set(key, row);
+            });
 
             const tag = element.tagName.toLowerCase();
             const attrs = ["id", "name", "type", "placeholder", "aria-label", "title", "role", "data-testid", "data-test-id", "data-cy", "value", "autocomplete"];
