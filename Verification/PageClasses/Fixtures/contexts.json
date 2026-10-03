@@ -1,0 +1,60 @@
+{
+  "title": "",
+  "url": "https://example.test/page",
+  "fields": [
+    {
+      "key": "Main email",
+      "label": "Main email",
+      "group": "",
+      "section": "",
+      "kind": "text",
+      "locator": "//div[@data-frame][1]/html/body/input",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Associated label; stable scoped fallback"
+    },
+    {
+      "key": "Shadow field",
+      "label": "Shadow field",
+      "group": "",
+      "section": "",
+      "kind": "text",
+      "locator": "//input[@id=//label[.='Shadow field']/@for]",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Associated label"
+    },
+    {
+      "key": "Frame email",
+      "label": "Frame email",
+      "group": "",
+      "section": "",
+      "kind": "text",
+      "locator": "//div[@data-frame][2]/html/body/input",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Associated label; stable scoped fallback"
+    }
+  ],
+  "elements": [],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 3,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": [
+    "A locator needs a positional/frame-context fallback: //div[@data-frame][1]/html/body/input",
+    "A locator needs a positional/frame-context fallback: //div[@data-frame][2]/html/body/input"
+  ]
+}

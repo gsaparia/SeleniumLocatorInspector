@@ -1,0 +1,51 @@
+{
+  "title": "",
+  "url": "https://fixture.test/",
+  "fields": [
+    {
+      "key": "Username",
+      "label": "Username",
+      "group": "",
+      "section": "",
+      "kind": "text",
+      "locator": "//div[.//div[.='Username']]//input[@name='username']",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Nearest single-control container text"
+    },
+    {
+      "key": "Password",
+      "label": "Password",
+      "group": "",
+      "section": "",
+      "kind": "text",
+      "locator": "//div[.//div[.='Password']]//input[@name='password']",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Nearest single-control container text"
+    }
+  ],
+  "elements": [
+    {
+      "name": "Login",
+      "kind": "button:submit",
+      "locator": "//button[.='Login']",
+      "evidence": "Standalone action or unlabelled control"
+    }
+  ],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 2,
+    "locatorOnly": 1,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": []
+}

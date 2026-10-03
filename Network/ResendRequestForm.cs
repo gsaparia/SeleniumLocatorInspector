@@ -1,4 +1,5 @@
 using System.Drawing;
+using SeleniumLocatorInspector.UI;
 using System.Text;
 using System.Windows.Forms;
 
@@ -71,6 +72,11 @@ internal sealed class ResendRequestForm : Form
         actions.Controls.Add(_send); actions.Controls.Add(_cancel); actions.Controls.Add(_status);
         layout.Controls.Add(actions, 0, 4);
         Controls.Add(layout);
+        options.Controls.Add(AppTheme.CreateSelector());
+        AppTheme.Primary(_send);
+        AppTheme.Editor(_headers);
+        AppTheme.Editor(_body);
+        AppTheme.Register(this);
         _send.Click += async (_, _) => await SendAsync();
         _cancel.Click += (_, _) => _sending?.Cancel();
         FormClosing += (_, e) =>

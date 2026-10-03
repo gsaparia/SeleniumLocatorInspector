@@ -1,0 +1,90 @@
+{
+  "title": "",
+  "url": "https://example.test/page",
+  "fields": [
+    {
+      "key": "Gender",
+      "label": "Gender",
+      "section": "Your Personal Details",
+      "kind": "radio",
+      "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' inputs ')][.//label[.='Gender:']]",
+      "options": [
+        {
+          "label": "Male",
+          "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' inputs ')][.//label[.='Gender:']]//input[following-sibling::label[.='Male']]"
+        },
+        {
+          "label": "Female",
+          "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' inputs ')][.//label[.='Gender:']]//input[following-sibling::label[.='Female']]"
+        }
+      ],
+      "aliases": [],
+      "evidence": "Group caption → option label → associated radio"
+    },
+    {
+      "key": "First name",
+      "label": "First name",
+      "group": "",
+      "section": "Your Personal Details",
+      "kind": "text",
+      "locator": "//input[@id=//label[.='First name:']/@for]",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Associated label"
+    },
+    {
+      "key": "Email",
+      "label": "Email",
+      "group": "",
+      "section": "Your Personal Details",
+      "kind": "text",
+      "locator": "//input[@id=//label[.='Email:']/@for]",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Associated label"
+    },
+    {
+      "key": "Password",
+      "label": "Password",
+      "group": "",
+      "section": "Your Password",
+      "kind": "text",
+      "locator": "//input[@id=//label[.='Password:']/@for]",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Associated label"
+    }
+  ],
+  "elements": [
+    {
+      "name": "Register",
+      "kind": "input:submit",
+      "locator": "//input[@id='register-button']",
+      "evidence": "Standalone action or unlabelled control"
+    }
+  ],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [
+    {
+      "name": "Your Personal Details",
+      "kind": "form",
+      "locator": "//form",
+      "evidence": "Form owned by nearest section heading"
+    }
+  ],
+  "coverage": {
+    "supportedFields": 4,
+    "locatorOnly": 1,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": []
+}

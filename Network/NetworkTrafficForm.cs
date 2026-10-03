@@ -1,4 +1,5 @@
 using System.Drawing;
+using SeleniumLocatorInspector.UI;
 using System.Windows.Forms;
 using OpenQA.Selenium;
 using Microsoft.Web.WebView2.WinForms;
@@ -12,29 +13,28 @@ public sealed class NetworkTrafficForm : Form
     private readonly DataGridView _grid = new();
     private readonly TabControl _detailTabs = new() { Dock = DockStyle.Fill };
     private readonly WebView2 _mediaPreview = new() { Dock = DockStyle.Fill, Visible = false };
-    private readonly Button _saveMedia = new() { Text = "Save media…", AutoSize = true, Enabled = false };
+    private readonly Button _saveMedia = new() { Text = "Download media", AutoSize = true, Enabled = false };
     private readonly List<string> _previewFiles = new();
     private readonly string _previewDirectory = Path.Combine(Path.GetTempPath(), "SeleniumLocatorInspector", Guid.NewGuid().ToString("N"));
-    private readonly TextBox _requestHeaders = CreateDetailBox();
-    private readonly TextBox _requestBody = CreateDetailBox();
-    private readonly TextBox _responseHeaders = CreateDetailBox();
-    private readonly TextBox _responseBody = CreateDetailBox();
+    private readonly CodeViewer _requestHeaders = CreateDetailBox();
+    private readonly CodeViewer _requestBody = CreateDetailBox();
+    private readonly CodeViewer _responseHeaders = CreateDetailBox();
+    private readonly CodeViewer _responseBody = CreateDetailBox();
     private int _selectionVersion;
     private int _recordingEpoch;
     private bool _stoppingRecording;
     private Task? _stopTask;
     private readonly SemaphoreSlim _bodyReadSlots = new(6, 6);
     private readonly HashSet<string> _liveKeys = new();
-    private readonly Button _importHar = new() { Text = "Import Har", AutoSize = true };
-    private readonly Button _downloadHar = new() { Text = "Download Har", AutoSize = true };
+    private readonly Button _importHar = new() { Text = "Import HAR", AutoSize = true };
+    private readonly Button _downloadHar = new() { Text = "Download HAR", AutoSize = true };
     private readonly Button _resend = new() { Text = "Resend Request", AutoSize = true, Enabled = false };
 
-    private static TextBox CreateDetailBox() => new()
-    {
-        ReadOnly = true, Multiline = true, MaxLength = int.MaxValue, ScrollBars = ScrollBars.Both,
-        WordWrap = false, Dock = DockStyle.Fill,
-        Font = new Font(FontFamily.GenericMonospace, 9)
-    };
+    private static CodeViewer CreateDetailBox() => new() { Dock = DockStyle.Fill };
+    private readonly TextBox _filter = new() { Width = 320, PlaceholderText = "Filter URL, method, status or type…" };
+    private readonly Label _requestCount = new() { AutoSize = true, Text = "0 requests", Margin = new Padding(12, 8, 0, 0) };
+    private readonly Label _requestContentType = new() { AutoSize = true };
+    private readonly Label _responseContentType = new() { AutoSize = true };
     private readonly Label _state = new() { AutoSize = true, Text = "Not recording" };
     private readonly Button _start = new() { Text = "Start recording", AutoSize = true };
     private readonly Button _stop = new() { Text = "Stop recording", AutoSize = true, Enabled = false };
@@ -49,7 +49,7 @@ public sealed class NetworkTrafficForm : Form
         _start.Enabled = driver != null;
         if (driver == null) _state.Text = "Offline HAR analysis";
         Text = "Network Traffic";
-        Width = 1200;
+        Width = 1350;
         Height = 750;
         StartPosition = FormStartPosition.CenterParent;
 
@@ -57,14 +57,21 @@ public sealed class NetworkTrafficForm : Form
         var reload = new Button { Text = "Reload page", AutoSize = true, Enabled = driver != null };
         var clear = new Button { Text = "Clear", AutoSize = true };
         var copy = new Button { Text = "Copy URL", AutoSize = true };
-        bar.Controls.AddRange([_start, _stop, reload, clear, copy, _importHar, _downloadHar, _resend, _state]);
+        bar.Controls.AddRange([_start, _stop, reload, _downloadHar, _importHar, _resend, clear, copy, _state]);
+        _state.Margin = new Padding(12, 9, 0, 0);
+        var tools = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true,
+            Padding = new Padding(10, 4, 10, 8), WrapContents = true };
+        tools.Controls.Add(_filter);
+        tools.Controls.Add(_requestCount);
+        tools.Controls.Add(AppTheme.CreateSelector());
+        _filter.TextChanged += (_, _) => ApplyRequestFilter();
         _importHar.Click += async (_, _) => await ImportHarAsync();
         _downloadHar.Click += async (_, _) => await DownloadHarAsync();
         _resend.Click += async (_, _) => await ResendAsync();
         _start.Click += async (_, _) => await StartRecordingAsync();
         _stop.Click += async (_, _) => await StopRecordingAsync();
         reload.Click += (_, _) => { try { _driver?.Navigate().Refresh(); } catch (Exception ex) { ShowError(ex); } };
-        clear.Click += (_, _) => { _rows.Clear(); _items.Clear(); _bodyCache.Clear(); _bodyFetches.Clear(); _liveKeys.Clear(); _grid.Rows.Clear(); ClearDetails(); };
+        clear.Click += (_, _) => { _rows.Clear(); _items.Clear(); _bodyCache.Clear(); _bodyFetches.Clear(); _liveKeys.Clear(); _grid.Rows.Clear(); ClearDetails(); UpdateRequestCount(); };
         copy.Click += (_, _) => { if (Selected() is { } entry) Clipboard.SetText(entry.Url); };
 
         _grid.Dock = DockStyle.Fill;
@@ -86,8 +93,8 @@ public sealed class NetworkTrafficForm : Form
         _grid.SelectionChanged += (_, _) => { _resend.Enabled = Selected() != null; _ = ShowDetailsAsync(); };
 
         AddTab("Request headers", _requestHeaders);
-        AddTab("Request body", _requestBody);
-        AddTab("Response Header", _responseHeaders);
+        AddBodyTab("Request body", _requestBody, _requestContentType);
+        AddTab("Response headers", _responseHeaders);
         AddResponseBodyTab();
         _saveMedia.Click += SaveMedia;
         var split = new SplitContainer
@@ -113,7 +120,13 @@ public sealed class NetworkTrafficForm : Form
         split.Panel1.Controls.Add(_grid);
         split.Panel2.Controls.Add(_detailTabs);
         Controls.Add(split);
+        Controls.Add(tools);
         Controls.Add(bar);
+        _grid.Columns[6].DisplayIndex = 1;
+        _grid.RowTemplate.Height = 28;
+        _grid.ColumnHeadersHeight = 34;
+        AppTheme.Primary(_start);
+        AppTheme.Register(this);
         MinimumSize = new Size(850, 540);
         FormClosed += async (_, _) =>
         {
@@ -124,11 +137,47 @@ public sealed class NetworkTrafficForm : Form
         };
     }
 
+    private void UpdateRequestCount()
+    {
+        var visible = _filter.TextLength == 0 ? _items.Count : _grid.Rows.Cast<DataGridViewRow>().Count(r => r.Visible);
+        _requestCount.Text = _filter.TextLength == 0 ? $"{_items.Count} requests" : $"{visible} / {_items.Count} requests";
+    }
+
+    private void ApplyRequestFilter(DataGridViewRow? changedRow = null)
+    {
+        var search = _filter.Text.Trim();
+        foreach (var row in changedRow == null ? _grid.Rows.Cast<DataGridViewRow>() : new[] { changedRow! })
+        {
+            var show = search.Length == 0 || row.Cells.Cast<DataGridViewCell>().Any(c =>
+                Convert.ToString(c.Value)?.Contains(search, StringComparison.OrdinalIgnoreCase) == true);
+            if (!show && _grid.CurrentRow == row) { _grid.CurrentCell = null; row.Selected = false; }
+            row.Visible = show;
+        }
+        UpdateRequestCount();
+    }
+
+    private void UpdateContentTypes(NetworkEntry item)
+    {
+        if (!_rows.TryGetValue(item.Key, out var index)) return;
+        _requestContentType.Text = "Content type: " + Convert.ToString(_grid.Rows[index].Cells[3].Value);
+        _responseContentType.Text = "Content type: " + Convert.ToString(_grid.Rows[index].Cells[4].Value);
+    }
+
+    private void AddBodyTab(string title, Control body, Label contentType)
+    {
+        var page = new TabPage(title);
+        var header = new Panel { Dock = DockStyle.Top, Height = 32, Padding = new Padding(8, 7, 8, 0) };
+        header.Controls.Add(contentType);
+        page.Controls.Add(body); page.Controls.Add(header);
+        _detailTabs.TabPages.Add(page);
+    }
+
     public async Task StartRecordingAsync()
     {
         if (_recorder != null || _driver == null || _stoppingRecording) return;
         _start.Enabled = false;
         _state.Text = "Connecting…";
+        AppTheme.Status(_state, null);
         _liveKeys.Clear(); // Retain old cached rows, but drain only this recording.
         var recorder = new NetworkRecorder();
         var epoch = ++_recordingEpoch;
@@ -149,6 +198,7 @@ public sealed class NetworkTrafficForm : Form
             {
                 if (epoch != _recordingEpoch) return;
                 _state.Text = "Disconnected: " + message;
+                AppTheme.Status(_state, false);
                 _stop.Enabled = false;
                 _ = StopRecordingAsync();
             }); }
@@ -160,6 +210,7 @@ public sealed class NetworkTrafficForm : Form
             if (IsDisposed) { await recorder.DisposeAsync(); return; }
             _recorder = recorder;
             _state.Text = "Recording — " + recorder.Mode;
+            AppTheme.Status(_state, true);
             _stop.Enabled = true;
             // Events can arrive while the initial subscription is being set up.
             foreach (var entry in _items.Values.Where(e => _liveKeys.Contains(e.Key) && (e.State is "Complete" or "Failed")).ToArray())
@@ -168,7 +219,7 @@ public sealed class NetworkTrafficForm : Form
         catch (Exception ex)
         {
             await recorder.DisposeAsync();
-            if (!IsDisposed) { _state.Text = "Not recording"; ShowError(ex); }
+            if (!IsDisposed) { _state.Text = "Not recording"; AppTheme.Status(_state, false); ShowError(ex); }
         }
         finally { if (!IsDisposed) _start.Enabled = _driver != null && _recorder == null; }
     }
@@ -227,6 +278,7 @@ public sealed class NetworkTrafficForm : Form
                 _start.Enabled = _driver != null;
                 _stop.Enabled = false;
                 _state.Text = _driver == null ? "Offline HAR analysis" : "Stopped — captured bodies retained";
+                AppTheme.Status(_state, null);
                 await ShowDetailsAsync();
             }
         }
@@ -250,17 +302,7 @@ public sealed class NetworkTrafficForm : Form
         // independently of row selection. Limit simultaneous reads below.
         if (entry.State is "Complete" or "Failed") _ = FetchBodiesAsync(entry);
         var red = entry.State == "Failed" || (entry.Status.HasValue && entry.Status.Value != 200);
-        row.DefaultCellStyle.ForeColor = red ? Color.Red : Color.Empty;
-        row.DefaultCellStyle.SelectionForeColor = red ? Color.Red : Color.Empty;
-        row.DefaultCellStyle.SelectionBackColor = red ? Color.MistyRose : Color.Empty;
-        // Keep the status cell red even when row selection themes override a
-        // DataGridViewRow's inherited foreground color.
-        foreach (DataGridViewCell cell in row.Cells)
-        {
-            cell.Style.ForeColor = red ? Color.Red : Color.Empty;
-            cell.Style.SelectionForeColor = red ? Color.Red : Color.Empty;
-            cell.Style.SelectionBackColor = red ? Color.MistyRose : Color.Empty;
-        }
+        AppTheme.Row(row, red ? RowTone.Error : RowTone.Normal);
         if (_grid.CurrentRow == row) _ = ShowDetailsAsync();
     }
 
@@ -274,6 +316,7 @@ public sealed class NetworkTrafficForm : Form
             bodies?[0].DisplayText ?? "", declaredRequest, "");
         _grid.Rows[index].Cells[4].Value = ResponseFormatter.DetectType(
             bodies?[1].DisplayText ?? "", declaredResponse.Length > 0 ? declaredResponse : entry.MimeType, entry.Url);
+        ApplyRequestFilter(_grid.Rows[index]);
     }
 
     private Task<CapturedBody[]> FetchBodiesAsync(NetworkEntry entry, bool retryUnavailable = false)
@@ -329,7 +372,7 @@ public sealed class NetworkTrafficForm : Form
     private NetworkEntry? Selected() =>
         _grid.CurrentRow?.Tag is string key && _items.TryGetValue(key, out var entry) ? entry : null;
 
-    private void AddTab(string title, TextBox content)
+    private void AddTab(string title, Control content)
     {
         var tab = new TabPage(title);
         tab.Controls.Add(content);
@@ -345,6 +388,7 @@ public sealed class NetworkTrafficForm : Form
         _requestBody.Clear();
         _responseHeaders.Clear();
         _responseBody.Clear();
+        _requestContentType.Text = _responseContentType.Text = "";
     }
 
     private async Task ShowDetailsAsync()
@@ -354,6 +398,7 @@ public sealed class NetworkTrafficForm : Form
         if (item == null) { ClearDetails(); return; }
         _mediaPreview.Visible = false;
         _saveMedia.Enabled = false;
+        UpdateContentTypes(item);
         _requestHeaders.Text = item.RequestHeaders.Length > 0 ? item.RequestHeaders : "(No request headers available)";
         _responseHeaders.Text = item.ResponseHeaders.Length > 0 ? item.ResponseHeaders :
             item.State == "Failed" ? "(Request failed before a response)" : "(No response headers available yet)";
@@ -389,6 +434,7 @@ public sealed class NetworkTrafficForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
         actions.Controls.Add(_saveMedia);
+        actions.Controls.Add(_responseContentType);
         var content = new Panel { Dock = DockStyle.Fill };
         content.Controls.Add(_responseBody);
         content.Controls.Add(_mediaPreview);
@@ -420,6 +466,7 @@ public sealed class NetworkTrafficForm : Form
     private async Task DisplayResponseAsync(NetworkEntry item, CapturedBody body, int version)
     {
         if (IsDisposed || version != _selectionVersion) return;
+        UpdateContentTypes(item);
         var ext = MediaExtension(item);
         _saveMedia.Enabled = ext.Length > 0 && body.Bytes != null;
         if (ext.Length == 0 || body.Bytes == null)
@@ -441,6 +488,7 @@ public sealed class NetworkTrafficForm : Form
             _mediaPreview.Visible = true;
             _mediaPreview.BringToFront();
             await _mediaPreview.EnsureCoreWebView2Async();
+            _mediaPreview.DefaultBackgroundColor = AppTheme.Palette.Surface;
             if (IsDisposed || version != _selectionVersion || Selected()?.Key != item.Key) return;
             _mediaPreview.Source = new Uri(path);
             _mediaPreview.Visible = true;
@@ -499,7 +547,8 @@ public sealed class NetworkTrafficForm : Form
                 }
             }
             finally { _grid.ResumeLayout(); }
-            if (imported.Count > 0) _grid.CurrentCell = _grid.Rows[_rows[imported[0].Entry.Key]].Cells[0];
+            var firstVisible = imported.Select(c => _grid.Rows[_rows[c.Entry.Key]]).FirstOrDefault(r => r.Visible);
+            if (firstVisible != null) _grid.CurrentCell = firstVisible.Cells[0];
             MessageBox.Show(this, "Imported " + imported.Count + " requests from " + Path.GetFileName(open.FileName) + ".", "Import Har");
         }
         catch (Exception ex) { if (!IsDisposed) ShowError(ex); }
@@ -552,7 +601,8 @@ public sealed class NetworkTrafficForm : Form
                 if (IsDisposed) return;
                 _bodyCache[result.Entry.Key] = result.Bodies;
                 UpdateRow(result.Entry);
-                _grid.CurrentCell = _grid.Rows[_rows[result.Entry.Key]].Cells[0];
+                var replayRow = _grid.Rows[_rows[result.Entry.Key]];
+                if (replayRow.Visible) _grid.CurrentCell = replayRow.Cells[0];
                 _ = ShowDetailsAsync();
             };
             dialog.ShowDialog(this);

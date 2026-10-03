@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><Compile Include="../../Inspector/InspectorCommandQueue.cs" Link="InspectorCommandQueue.cs" /></ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../Inspector/LocatorInspector.cs" Link="LocatorInspector.cs" />
+    <Compile Include="../../Inspector/LocatorResult.cs" Link="LocatorResult.cs" />
+    <Compile Include="../../PageClasses/PageAnalysis.cs" Link="PageAnalysis.cs" />
+    <Compile Include="../../PageClasses/PageClassGenerator.cs" Link="PageClassGenerator.cs" />
+    <PackageReference Include="Selenium.WebDriver" Version="4.35.0" />
+  </ItemGroup>
+</Project>

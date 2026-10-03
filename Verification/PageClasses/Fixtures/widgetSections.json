@@ -1,0 +1,39 @@
+{
+  "title": "",
+  "url": "https://components.test/",
+  "fields": [],
+  "elements": [],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [
+    {
+      "name": "Time at Work",
+      "kind": "widget",
+      "locator": "//body/div/div",
+      "children": [],
+      "evidence": "Direct header identifies inner widget; relative metrics validated"
+    },
+    {
+      "name": "Balance",
+      "kind": "widget",
+      "locator": "//section[@role='region']",
+      "children": [
+        {
+          "name": "Total",
+          "locator": ".//dt[.='Total']/following-sibling::dd[1]",
+          "kind": "value",
+          "evidence": "Read-only metric scoped to its captioned widget"
+        }
+      ],
+      "evidence": "Direct header identifies inner widget; relative metrics validated"
+    }
+  ],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": []
+}

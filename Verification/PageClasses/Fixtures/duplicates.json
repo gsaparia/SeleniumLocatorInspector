@@ -1,0 +1,68 @@
+{
+  "title": "",
+  "url": "https://example.test/page",
+  "fields": [
+    {
+      "key": "Billing / Email",
+      "label": "Email",
+      "group": "",
+      "section": "Billing",
+      "kind": "text",
+      "locator": "//body[.//label[.='Email']]//input[@id='bill']",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [
+        "Billing"
+      ],
+      "evidence": "Associated label"
+    },
+    {
+      "key": "Shipping / Email",
+      "label": "Email",
+      "group": "",
+      "section": "Shipping",
+      "kind": "text",
+      "locator": "//body[.//label[.='Email']]//input[@id='ship']",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [
+        "Shipping"
+      ],
+      "evidence": "Associated label"
+    }
+  ],
+  "elements": [],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [
+    {
+      "name": "Billing",
+      "kind": "widget",
+      "locator": "//body/section[1]",
+      "children": [],
+      "evidence": "Direct header identifies inner widget; relative metrics validated"
+    },
+    {
+      "name": "Shipping",
+      "kind": "widget",
+      "locator": "//body/section[2]",
+      "children": [],
+      "evidence": "Direct header identifies inner widget; relative metrics validated"
+    }
+  ],
+  "coverage": {
+    "supportedFields": 2,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": [
+    "Use qualified field name: Billing / Email",
+    "Use qualified field name: Shipping / Email",
+    "Positional relationship needs review: //body/section[1]",
+    "Positional relationship needs review: //body/section[2]"
+  ]
+}

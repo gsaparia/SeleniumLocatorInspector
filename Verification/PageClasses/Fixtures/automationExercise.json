@@ -1,0 +1,94 @@
+{
+  "title": "",
+  "url": "https://example.test/automationExercise",
+  "fields": [],
+  "elements": [],
+  "repeaters": [
+    {
+      "name": "Features Items",
+      "kind": "card",
+      "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' features_items ')]//div[contains(concat(' ',normalize-space(@class),' '),' product-image-wrapper ')]",
+      "keyLocator": ".//div[contains(concat(' ',normalize-space(@class),' '),' productinfo ')]//p",
+      "keyNormalize": false,
+      "sampleCount": 2,
+      "evidence": "Common child selectors validated across 2 loaded items; exact name template",
+      "children": [
+        {
+          "name": "Price",
+          "locator": ".//div[contains(concat(' ',normalize-space(@class),' '),' productinfo ')]//h2",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Name",
+          "locator": ".//div[contains(concat(' ',normalize-space(@class),' '),' productinfo ')]//p",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Image",
+          "locator": ".//img",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "AddToCartButton",
+          "locator": ".//div[contains(concat(' ',normalize-space(@class),' '),' productinfo ')]//a",
+          "kind": "action",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "ViewProductButton",
+          "locator": ".//a[.='View Product']",
+          "kind": "action",
+          "evidence": "One matching child in every sampled item"
+        }
+      ]
+    },
+    {
+      "name": "Recommended Items",
+      "kind": "card",
+      "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' recommended_items ')]//div[contains(concat(' ',normalize-space(@class),' '),' product-image-wrapper ')]",
+      "keyLocator": ".//div[contains(concat(' ',normalize-space(@class),' '),' productinfo ')]//p",
+      "keyNormalize": false,
+      "sampleCount": 2,
+      "evidence": "Common child selectors validated across 2 loaded items; exact name template",
+      "children": [
+        {
+          "name": "Price",
+          "locator": ".//div[contains(concat(' ',normalize-space(@class),' '),' productinfo ')]//h2",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Name",
+          "locator": ".//div[contains(concat(' ',normalize-space(@class),' '),' productinfo ')]//p",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Image",
+          "locator": ".//img",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "AddToCartButton",
+          "locator": ".//a[.='Add to cart']",
+          "kind": "action",
+          "evidence": "One matching child in every sampled item"
+        }
+      ]
+    }
+  ],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 4
+  },
+  "warnings": []
+}

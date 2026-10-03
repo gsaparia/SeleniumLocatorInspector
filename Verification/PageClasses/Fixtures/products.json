@@ -1,0 +1,122 @@
+{
+  "title": "",
+  "url": "https://example.test/page",
+  "fields": [
+    {
+      "key": "Sort by",
+      "label": "Sort by",
+      "group": "",
+      "section": "",
+      "kind": "select",
+      "locator": "//div[.//span[.='Sort by']]//select",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Nearest single-control container text"
+    },
+    {
+      "key": "Sign up for our newsletter",
+      "label": "Sign up for our newsletter",
+      "group": "",
+      "section": "Newsletter",
+      "kind": "text",
+      "locator": "//div[.//span[.='Sign up for our newsletter:']]//input[@name='NewsletterEmail']",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [
+        "Newsletter"
+      ],
+      "evidence": "Nearest single-control container text"
+    }
+  ],
+  "elements": [
+    {
+      "name": "Subscribe",
+      "kind": "input:button",
+      "locator": "//div/input[2]",
+      "evidence": "Standalone action or unlabelled control"
+    }
+  ],
+  "repeaters": [
+    {
+      "name": "Products",
+      "kind": "card",
+      "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' product-grid ')]//div[contains(concat(' ',normalize-space(@class),' '),' product-item ')]",
+      "keyLocator": ".//h2[contains(concat(' ',normalize-space(@class),' '),' product-title ')]//a",
+      "keyNormalize": false,
+      "sampleCount": 2,
+      "evidence": "Common child selectors validated across 2 loaded items; exact name template",
+      "children": [
+        {
+          "name": "Price",
+          "locator": ".//span[contains(concat(' ',normalize-space(@class),' '),' actual-price ')]",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Name",
+          "locator": ".//h2[contains(concat(' ',normalize-space(@class),' '),' product-title ')]//a",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Image",
+          "locator": ".//img",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "ProductLink",
+          "locator": ".//h2[contains(concat(' ',normalize-space(@class),' '),' product-title ')]//a",
+          "kind": "link",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "AddToCartButton",
+          "locator": ".//input[@value='Add to cart']",
+          "kind": "action",
+          "evidence": "One matching child in every sampled item"
+        }
+      ]
+    }
+  ],
+  "menus": [
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "Computers",
+      "section": "",
+      "path": [
+        "//ul[contains(concat(' ',normalize-space(@class),' '),' top-menu ')]//a[.='Computers']"
+      ],
+      "captionPath": "Computers"
+    },
+    {
+      "actions": [
+        "hover",
+        "click"
+      ],
+      "key": "Accessories",
+      "section": "",
+      "path": [
+        "//ul[contains(concat(' ',normalize-space(@class),' '),' top-menu ')]//a[.='Computers']",
+        "//ul[contains(concat(' ',normalize-space(@class),' '),' top-menu ')]//a[.='Accessories']"
+      ],
+      "captionPath": "Computers > Accessories"
+    }
+  ],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 2,
+    "locatorOnly": 1,
+    "unresolved": 0,
+    "loadedRows": 2
+  },
+  "warnings": [
+    "Positional relationship needs review: //div/input[2]"
+  ]
+}

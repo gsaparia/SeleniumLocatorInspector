@@ -1,0 +1,41 @@
+{
+  "title": "",
+  "url": "https://fixture.test/",
+  "fields": [],
+  "elements": [],
+  "repeaters": [
+    {
+      "name": "Repeated items",
+      "kind": "card",
+      "locator": "//body/div//div[contains(concat(' ',normalize-space(@class),' '),' orangehrm-directory-card ')]",
+      "keyLocator": ".//p[contains(concat(' ',normalize-space(@class),' '),' orangehrm-directory-card-header ')]",
+      "keyNormalize": false,
+      "sampleCount": 2,
+      "evidence": "Inferred sibling schema; Common child selectors validated across 2 loaded items; exact name template",
+      "children": [
+        {
+          "name": "Name",
+          "locator": ".//p[contains(concat(' ',normalize-space(@class),' '),' orangehrm-directory-card-header ')]",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Image",
+          "locator": ".//img",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        }
+      ]
+    }
+  ],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 2
+  },
+  "warnings": []
+}

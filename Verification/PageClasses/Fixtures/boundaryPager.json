@@ -1,0 +1,31 @@
+{
+  "title": "",
+  "url": "https://example.test/boundaryPager",
+  "fields": [],
+  "elements": [],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [
+    {
+      "name": "Pagination",
+      "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' pager ')]",
+      "currentLocator": "//div[contains(concat(' ',normalize-space(@class),' '),' pager ')]//*[contains(concat(' ',normalize-space(@class),' '),' current-page ')]",
+      "rowLocators": [],
+      "nextLocator": "//div[contains(concat(' ',normalize-space(@class),' '),' pager ')]//a[.='Next']",
+      "previousLocator": "//div[contains(concat(' ',normalize-space(@class),' '),' pager ')]//*[self::a or self::button][@rel='prev' or @aria-label='Previous' or normalize-space(.)='Previous' or normalize-space(.)='Prev' or normalize-space(.)='Previous page']",
+      "pageTemplate": "//div[contains(concat(' ',normalize-space(@class),' '),' pager ')]//a[normalize-space(.)={page}]",
+      "evidence": "Explicit pager region; carousel controls excluded"
+    }
+  ],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": [
+    "Pager previous control absent in this snapshot; boundary locator is inferred and needs checking on another page.",
+    "No interactive controls detected. Wait for the page to finish rendering, then Reanalyse Page."
+  ]
+}

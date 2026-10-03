@@ -1,0 +1,41 @@
+{
+  "title": "",
+  "url": "https://components.test/",
+  "fields": [
+    {
+      "key": "Read only",
+      "label": "Read only",
+      "group": "",
+      "section": "",
+      "kind": "text",
+      "locator": "//label[.='Read only']//input",
+      "optionLocator": "",
+      "readOnly": true,
+      "options": [],
+      "aliases": [],
+      "evidence": "Text inside wrapping label"
+    }
+  ],
+  "elements": [
+    {
+      "name": "Volume",
+      "kind": "div:",
+      "locator": "//div[@aria-label='Volume']",
+      "evidence": "Custom/file control: use element property; review interaction"
+    }
+  ],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 1,
+    "locatorOnly": 1,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": [
+    "Dedicated interaction required: Volume",
+    "Date pickers and range sliders require a dedicated component interaction; do not assume ordinary text entry covers them."
+  ]
+}

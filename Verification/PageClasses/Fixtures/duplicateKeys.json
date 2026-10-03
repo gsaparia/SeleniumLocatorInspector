@@ -1,0 +1,46 @@
+{
+  "title": "",
+  "url": "https://components.test/",
+  "fields": [],
+  "elements": [],
+  "repeaters": [
+    {
+      "name": "Employees",
+      "kind": "table",
+      "matrix": false,
+      "keyColumns": [
+        "Status"
+      ],
+      "tableLocator": "//div[@aria-label='Employees']",
+      "locator": "//div[@aria-label='Employees']//*[@role='row'][./*[@role='gridcell' or @role='cell']][not(count(*)=1 and *[@colspan]) and not(normalize-space(.)='No Records Found' or normalize-space(.)='No records found' or normalize-space(.)='No Results Found' or normalize-space(.)='No results found' or normalize-space(.)='No data available' or normalize-space(.)='No Data Available' or normalize-space(.)='Nothing to display')]",
+      "keyLocator": "",
+      "keyNormalize": true,
+      "sampleCount": 2,
+      "evidence": "Header-mapped data rows; Status unique only in loaded sample",
+      "children": [
+        {
+          "name": "Id",
+          "locator": "./*[@role=\"cell\" or @role=\"gridcell\"][count(ancestor::*[@role=\"grid\" or @role=\"table\"][1]//*[@role=\"columnheader\"][text()[normalize-space(.)='Id']]/preceding-sibling::*)+1][count(ancestor::*[@role=\"grid\" or @role=\"table\"][1]//*[@role=\"columnheader\"][text()[normalize-space(.)='Id']])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        },
+        {
+          "name": "Status",
+          "locator": "./*[@role=\"cell\" or @role=\"gridcell\"][count(ancestor::*[@role=\"grid\" or @role=\"table\"][1]//*[@role=\"columnheader\"][text()[normalize-space(.)='Status']]/preceding-sibling::*)+1][count(ancestor::*[@role=\"grid\" or @role=\"table\"][1]//*[@role=\"columnheader\"][text()[normalize-space(.)='Status']])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        }
+      ]
+    }
+  ],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 2
+  },
+  "warnings": []
+}

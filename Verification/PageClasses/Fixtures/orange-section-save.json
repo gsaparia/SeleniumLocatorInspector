@@ -1,0 +1,43 @@
+{
+  "title": "",
+  "url": "https://fixture.test/",
+  "fields": [],
+  "elements": [
+    {
+      "name": "Save",
+      "kind": "button:",
+      "locator": "//div[./h6[.='Personal Details']]/form/button",
+      "evidence": "Standalone action or unlabelled control"
+    },
+    {
+      "name": "Save",
+      "kind": "button:",
+      "locator": "//div[./h6[.='Custom Fields']]/form/button",
+      "evidence": "Standalone action or unlabelled control"
+    }
+  ],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [
+    {
+      "name": "Personal Details",
+      "kind": "form",
+      "locator": "//div[./h6[.='Personal Details']]/form",
+      "evidence": "Form owned by nearest section heading"
+    },
+    {
+      "name": "Custom Fields",
+      "kind": "form",
+      "locator": "//div[./h6[.='Custom Fields']]/form",
+      "evidence": "Form owned by nearest section heading"
+    }
+  ],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 2,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": []
+}

@@ -1,0 +1,117 @@
+{
+  "title": "",
+  "url": "https://example.test/xyzBank",
+  "fields": [
+    {
+      "key": "Search Customer",
+      "label": "Search Customer",
+      "group": "",
+      "section": "",
+      "kind": "text",
+      "locator": "//input[@placeholder='Search Customer']",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Placeholder fallback (no textual label)"
+    }
+  ],
+  "elements": [
+    {
+      "name": "First Name",
+      "kind": "a:",
+      "locator": "//a[.='First Name']",
+      "evidence": "Standalone action or unlabelled control"
+    },
+    {
+      "name": "Last Name",
+      "kind": "a:",
+      "locator": "//a[.='Last Name']",
+      "evidence": "Standalone action or unlabelled control"
+    },
+    {
+      "name": "Post Code",
+      "kind": "a:",
+      "locator": "//a[.='Post Code']",
+      "evidence": "Standalone action or unlabelled control"
+    },
+    {
+      "name": "Account Number",
+      "kind": "a:",
+      "locator": "//a[.='Account Number']",
+      "evidence": "Standalone action or unlabelled control"
+    },
+    {
+      "name": "Delete Customer",
+      "kind": "a:",
+      "locator": "//a[.='Delete Customer']",
+      "evidence": "Standalone action or unlabelled control"
+    }
+  ],
+  "repeaters": [
+    {
+      "name": "Table",
+      "kind": "table",
+      "matrix": false,
+      "keyColumns": [
+        "Last Name",
+        "Post Code",
+        "Account Number"
+      ],
+      "tableLocator": "//table",
+      "locator": "(//table/tbody/tr[td] | //table/tr[td])[not(count(*)=1 and *[@colspan]) and not(normalize-space(.)='No Records Found' or normalize-space(.)='No records found' or normalize-space(.)='No Results Found' or normalize-space(.)='No results found' or normalize-space(.)='No data available' or normalize-space(.)='No Data Available' or normalize-space(.)='Nothing to display')]",
+      "keyLocator": "",
+      "keyNormalize": true,
+      "sampleCount": 2,
+      "evidence": "Header-mapped data rows; Last Name, Post Code, Account Number unique only in loaded sample",
+      "children": [
+        {
+          "name": "First Name",
+          "locator": "./td[count(ancestor::table[1]/thead/tr/*[.='First Name']/preceding-sibling::*)+1][count(ancestor::table[1]/thead/tr/*[.='First Name'])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        },
+        {
+          "name": "Last Name",
+          "locator": "./td[count(ancestor::table[1]/thead/tr/*[.='Last Name']/preceding-sibling::*)+1][count(ancestor::table[1]/thead/tr/*[.='Last Name'])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        },
+        {
+          "name": "Post Code",
+          "locator": "./td[count(ancestor::table[1]/thead/tr/*[.='Post Code']/preceding-sibling::*)+1][count(ancestor::table[1]/thead/tr/*[.='Post Code'])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        },
+        {
+          "name": "Account Number",
+          "locator": "./td[count(ancestor::table[1]/thead/tr/*[.='Account Number']/preceding-sibling::*)+1][count(ancestor::table[1]/thead/tr/*[.='Account Number'])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        },
+        {
+          "name": "Delete Customer",
+          "locator": "./td[count(ancestor::table[1]/thead/tr/*[.='Delete Customer']/preceding-sibling::*)+1][count(ancestor::table[1]/thead/tr/*[.='Delete Customer'])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        },
+        {
+          "name": "DeleteButton",
+          "locator": ".//button[.='Delete']",
+          "kind": "action",
+          "evidence": "One matching child in every sampled item"
+        }
+      ]
+    }
+  ],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 1,
+    "locatorOnly": 5,
+    "unresolved": 0,
+    "loadedRows": 2
+  },
+  "warnings": []
+}

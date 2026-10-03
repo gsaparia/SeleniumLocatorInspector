@@ -1,0 +1,37 @@
+// npm install jsdom@26; NODE_PATH=/path/to/node_modules node Verification/selection-async.cjs
+const {JSDOM}=require('jsdom'),fs=require('fs'),path=require('path'),assert=require('assert/strict');
+const w=new JSDOM('<button>A</button><button>B</button><button>C</button>',{runScripts:'outside-only'}).window;
+w.eval(fs.readFileSync(path.join(__dirname,'../JavaScript/locator-inspector.js'),'utf8'));
+const i=w.__seleniumLocatorInspector,nodes=Array.from(w.document.querySelectorAll('button'));
+let checks=0;const check=(ok,msg)=>{assert.ok(ok,msg);checks++};
+const delay=()=>new Promise(r=>w.setTimeout(r,0));
+(async()=>{
+ let flattened=0,calls=0;
+ i.flattenMultiFrameDOM=()=>{flattened++;return {fake:true}};
+ i.generateLocators=(element,index,snapshot)=>{calls++;assert.ok(snapshot.fake);return {tagName:'button',text:element.textContent,candidates:[],selectionIndex:index};};
+ const job=i.analyseSelection(nodes,true);
+ check(calls===0&&i.selectionStatus.phase==='analysing','analysis deferred out of mouseup event');
+ let yielded=0;const ticker=w.setInterval(()=>yielded++,0);
+ await job;w.clearInterval(ticker);
+ check(flattened===1,'one shared flattened snapshot per rectangle');
+ check(calls===3&&yielded>=3,'browser task queue gets a turn between element analyses');
+ check(w.__seleniumLocatorResult.rectangleResults.length===3,'all selected results retained');
+ check(i.selectionStatus.completed===3&&i.selectionStatus.phase==='ready','progress reports completion');
+ calls=0;const cancelled=i.analyseSelection(nodes,true);await delay();i.stopRectangleSelection();await cancelled;
+ check(calls===0&&w.__seleniumLocatorResult===null,'stopped analysis cannot publish a stale result');
+ const old=i.analyseSelection(nodes,true);const latest=i.analyseSelection([nodes[2]],false);await Promise.all([old,latest]);
+ check(w.__seleniumLocatorResult.text==='C'&&!w.__seleniumLocatorResult.isRectangleSelection,'new selection replaces old job safely');
+ i.generateLocators=()=>{throw Error('detached element')};await i.analyseSelection([nodes[0]],false);
+ check(i.selectionStatus.phase==='failed'&&i.selectionStatus.error.includes('detached'),'analysis errors published instead of silently hanging');
+ check(w.__seleniumLocatorResult===null,'failed job has no stale result');
+ i.generateLocators=(n,index)=>{if(index===1)throw Error('gone');return {text:n.textContent,selectionIndex:index};};
+ await i.analyseSelection(nodes,true);
+ check(w.__seleniumLocatorResult.rectangleResults.length===2&&i.selectionStatus.error.includes('1 element'),'partial failure reported without losing good results');
+ check(w.__seleniumLocatorResult.rectangleResults[1].selectionIndex===2,'original indices retained across failures');
+ const source=fs.readFileSync(path.join(__dirname,'../Inspector/LocatorInspector.cs'),'utf8');
+ check(source.includes('if(result)window.__seleniumLocatorResult=null'),'result read and clear use one browser command');
+ const main=fs.readFileSync(path.join(__dirname,'../MainForm.cs'),'utf8');
+ check(main.includes('await inspector.PollAsync()')&&main.includes('_pollBusy||_analysisBusy'),'poll is asynchronous with overlap guard');
+ check(!main.includes('_inspector.GetSelectedResult()'),'no synchronous result read on UI timer');
+ w.close();console.log(`Passed ${checks} asynchronous selection checks.`);
+})().catch(e=>{w.close();console.error(e);process.exitCode=1});

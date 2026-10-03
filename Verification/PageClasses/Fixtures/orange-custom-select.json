@@ -1,0 +1,29 @@
+{
+  "title": "",
+  "url": "https://fixture.test/",
+  "fields": [
+    {
+      "key": "Job Title",
+      "label": "Job Title",
+      "section": "",
+      "kind": "custom-select",
+      "locator": "//div[.//div[.='Job Title']]//div[contains(concat(' ',normalize-space(@class),' '),' oxd-select-text-input ')]",
+      "optionLocator": "//div[contains(concat(' ',normalize-space(@class),' '),' oxd-select-wrapper ')]//*[@role='option']",
+      "aliases": [],
+      "options": [],
+      "evidence": "Nearest single-control container text; OrangeHRM DOM adapter"
+    }
+  ],
+  "elements": [],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 1,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": []
+}

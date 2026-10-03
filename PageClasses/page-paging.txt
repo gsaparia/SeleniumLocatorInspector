@@ -1,0 +1,45 @@
+    private static PagerSpec FindPager(string? name)
+    {
+        var found=Pagers.Where(p=>name==null||Same(p.Name,name)).ToArray();
+        if(found.Length!=1)throw new ArgumentException("Specify a unique pager name from PagerNames.");
+        return found[0];
+    }
+    // Explicit paging only. Returns false at a disabled/missing end control.
+    public bool NextPage(string? pager=null) => MovePage(FindPager(pager),true);
+    public bool PreviousPage(string? pager=null) => MovePage(FindPager(pager),false);
+    private bool MovePage(PagerSpec pager,bool next)
+    {
+        var locator=next?pager.NextLocator:pager.PreviousLocator;
+        if(string.IsNullOrEmpty(locator))return false;
+        var query=new Query(locator,DisplayOnly:true);
+        if(!_runtime.CanClick(query))return false;
+        var before=_runtime.Fingerprint(new Query(pager.Locator));
+        var rowsBefore=RowsFingerprint(pager);
+        _runtime.Click(query);
+        _runtime.Wait.Until(_=>PageChanged(rowsBefore,before,pager));
+        return true;
+    }
+    public void GoToPage(int page,string? pager=null)
+    {
+        if(page<1)throw new ArgumentOutOfRangeException(nameof(page));
+        var spec=FindPager(pager);
+        if(string.IsNullOrEmpty(spec.PageTemplate))throw new NotSupportedException("This pager has no validated numbered-page template.");
+        var pageText=page.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if(CurrentPage(spec)==pageText)return;
+        var query=new Query(spec.PageTemplate.Replace("{page}",XPathLiteral(page.ToString(System.Globalization.CultureInfo.InvariantCulture))),DisplayOnly:true);
+        if(!_runtime.CanClick(query))throw new InvalidOperationException("Requested page is unavailable or disabled.");
+        var before=_runtime.Fingerprint(new Query(spec.Locator));
+        var rowsBefore=RowsFingerprint(spec);
+        _runtime.Click(query);
+        _runtime.Wait.Until(_=>PageChanged(rowsBefore,before,spec) && (string.IsNullOrEmpty(spec.CurrentLocator)||CurrentPage(spec)==pageText));
+    }
+    private string CurrentPage(PagerSpec pager)
+        => !string.IsNullOrEmpty(pager.CurrentLocator)&&_runtime.Count(new Query(pager.CurrentLocator,DisplayOnly:true))==1
+            ? _runtime.Read(new Query(pager.CurrentLocator,DisplayOnly:true),e=>e.Text.Trim()) : "";
+    private string RowsFingerprint(PagerSpec pager) => string.Join("\n",(pager.RowLocators.Length>0?pager.RowLocators:AnalysedRowLocators).Select(locator=>_runtime.Fingerprint(new Query(locator,DisplayOnly:true))));
+    private bool PageChanged(string rowsBefore,string pagerBefore,PagerSpec pager)
+    {
+        if(_runtime.Count(new Query("//*[@role='progressbar'] | //*[contains(concat(' ',normalize-space(@class),' '),' oxd-loading-spinner ')]",DisplayOnly:true))>0)return false;
+        var rowsNow=RowsFingerprint(pager);
+        return (!string.IsNullOrEmpty(rowsNow)&&rowsNow!=rowsBefore) || pagerBefore!=_runtime.Fingerprint(new Query(pager.Locator));
+    }

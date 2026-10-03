@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><EnableDefaultCompileItems>false</EnableDefaultCompileItems><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../PageClasses/PageAnalysis.cs" Link="PageAnalysis.cs" />
+    <Compile Include="../../PageClasses/PageClassGenerator.cs" Link="PageClassGenerator.cs" />
+    <EmbeddedResource Include="../../PageClasses/page-class-template.txt" LogicalName="SeleniumLocatorInspector.PageClasses.page-class-template.txt" />
+    <EmbeddedResource Include="../../PageClasses/flattened-resolver.js" LogicalName="SeleniumLocatorInspector.PageClasses.flattened-resolver.js" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../PageClasses/page-components.txt" LogicalName="SeleniumLocatorInspector.PageClasses.page-components.txt" />
+    <EmbeddedResource Include="../../PageClasses/page-paging.txt" LogicalName="SeleniumLocatorInspector.PageClasses.page-paging.txt" />
+  </ItemGroup>
+</Project>

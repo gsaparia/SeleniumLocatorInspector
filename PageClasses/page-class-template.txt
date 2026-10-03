@@ -1,0 +1,302 @@
+// Generated from a flattened DOM snapshot. Review AnalysisWarnings before use.
+// Requires .NET 8, Selenium.WebDriver and Selenium.Support (Selenium 4).
+// No inspector application or JavaScript installation is required at runtime.
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using OpenQA.Selenium;
+using OpenQA.Selenium.Interactions;
+using OpenQA.Selenium.Support.UI;
+
+namespace @@NAMESPACE@@;
+
+public sealed class @@CLASS@@
+{
+    public const string AnalysedUrl = @@URL@@;
+    public static IReadOnlyList<string> AnalysisWarnings { get; } = new string[] { @@WARNINGS@@ };
+    public static IReadOnlyList<string> FieldNames { get; } = new string[] { @@FIELD_NAMES@@ };
+    private readonly PageRuntime _runtime;
+    public @@CLASS@@(IWebDriver driver, TimeSpan? timeout = null)
+        => _runtime = new PageRuntime(driver, timeout ?? TimeSpan.FromSeconds(10));
+
+    private static readonly FieldSpec[] Fields =
+    {
+@@FIELDS@@
+    };
+    public string GetText(string labelText)
+    {
+        var field = FindField(labelText);
+        if (field.Kind == "radio")
+            return field.Options.FirstOrDefault(o => _runtime.Read(new Query(o.Locator), e => e.Selected))?.Label ?? "";
+        return field.Kind=="custom-select" ? _runtime.Read(new Query(field.Locator),e=>e.Text) : _runtime.GetValue(new Query(field.Locator));
+    }
+    public void SetText(string labelText, string valueText)
+    {
+        var field = FindField(labelText);
+        if(field.ReadOnly)throw new InvalidOperationException("Field is read-only: "+field.Key);
+        if(field.Kind is "custom-select" or "autocomplete")
+        {
+            _runtime.Choose(field,valueText);return;
+        }
+        if (field.Kind == "radio")
+        {
+            var option = field.Options.SingleOrDefault(o => Same(o.Label,valueText))
+                ?? throw new ArgumentException("Unknown option for " + field.Key + ": " + valueText);
+            var query = new Query(option.Locator);
+            if (!_runtime.Read(query,e => e.Selected)) _runtime.Click(query);
+            _runtime.Wait.Until(_ => _runtime.Read(query,e => e.Selected));
+            return;
+        }
+        _runtime.SetValue(new Query(field.Locator), valueText);
+    }
+@@LOGIN@@
+    public void WaitFor(string locator) => _runtime.Wait.Until(_=>_runtime.Count(new Query(locator,DisplayOnly:true))>0);
+    public string GetChoice(string labelText) => GetText(labelText);
+    public void SetChoice(string labelText,string choice) => SetText(labelText,choice);
+    public void SelectSuggestion(string labelText,string option)
+    {
+        var field=FindField(labelText);
+        if(field.Kind!="autocomplete")throw new ArgumentException("Field is not an autocomplete: "+labelText);
+        _runtime.Choose(field,option);
+    }
+    // Explicit format for custom date controls; native date inputs use ISO.
+    public void SetDate(string labelText,DateOnly date,string format="yyyy-MM-dd")
+    {
+        var field=FindField(labelText);
+        if(field.Kind!="date")throw new ArgumentException("Field is not a recognized date: "+labelText);
+        SetText(labelText,date.ToString(format,System.Globalization.CultureInfo.InvariantCulture));
+    }
+    public void SetDateRange(string group,DateOnly from,DateOnly to,string format="yyyy-MM-dd")
+    {
+        if(to<from)throw new ArgumentException("End date precedes start date.");
+        SetDate(group+" / From",from,format); SetDate(group+" / To",to,format);
+    }
+    private static readonly SectionSpec[] Sections =
+    {
+@@SECTIONS@@
+    };
+    internal sealed record SectionSpec(string Name,string Kind,string Locator,ChildSpec[] Children);
+    public static IReadOnlyList<string> SectionNames => Sections.Select(s=>s.Name).ToArray();
+    public PageSection Section(string name)
+    {
+        var matches=Sections.Where(s=>Same(s.Name,name)).ToArray();
+        if(matches.Length!=1)throw new ArgumentException("Unknown or ambiguous section: "+name);
+        return new PageSection(this,matches[0]);
+    }
+    public sealed class PageSection
+    {
+        private readonly @@CLASS@@ _page;
+        private readonly SectionSpec _spec;
+        internal PageSection(@@CLASS@@ page,SectionSpec spec){_page=page;_spec=spec;}
+        public PageElement Container => new PageElement(_page._runtime,new Query(_spec.Locator));
+        public PageElement Element(string relativeXPath) => new PageElement(_page._runtime,new Query(_spec.Locator,Relative:relativeXPath));
+        private string Key(string label)
+        {
+            var fields=Fields.Where(f=>Same(f.Section,_spec.Name)&&(Same(f.Key,label)||Same(f.Key,_spec.Name+" / "+label)||f.Aliases.Any(a=>Same(a,label)))).ToArray();
+            if(fields.Length!=1)throw new ArgumentException("Unknown or ambiguous field in "+_spec.Name+": "+label);
+            return fields[0].Key;
+        }
+        public PageElement NamedElement(string name)
+        {
+            var child=_spec.Children.SingleOrDefault(c=>Same(c.Name,name)) ?? throw new ArgumentException("Unknown metric in "+_spec.Name+": "+name);
+            return Element(child.Locator);
+        }
+        public string GetText(string label) => _spec.Kind=="widget"?NamedElement(label).Text:_page.GetText(Key(label));
+        public void SetText(string label,string value) => _page.SetText(Key(label),value);
+        public void SetChoice(string label,string value) => SetText(label,value);
+        public void ClickAction(string caption) => Element(".//button[normalize-space(.)="+XPathLiteral(caption.Trim())+"] | .//input[@value="+XPathLiteral(caption.Trim())+"]").Click();
+        public string ReadText(string relativeXPath) => Element(relativeXPath).Text;
+    }
+    // Resolves each tab through the flattened mapping, then waits for selected state or panel heading.
+    public void OpenTab(string caption,string? expectedHeading=null)
+    {
+        var text=XPathLiteral(caption.Trim());
+        var query=new Query("//*[@role='tab'][normalize-space(.)="+text+"] | //*[@role='tablist']//a[normalize-space(.)="+text+"][not(ancestor::*[@role='tab'])]",DisplayOnly:true);
+        _runtime.Click(query);
+        _runtime.Wait.Until(_=>expectedHeading!=null
+            ? _runtime.Count(new Query("//*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][normalize-space(.)="+XPathLiteral(expectedHeading)+"]",DisplayOnly:true))>0
+            : _runtime.Count(new Query("("+query.Locator+")[ @aria-selected='true' or contains(@class,'--active') or contains(concat(' ',normalize-space(@class),' '),' active ') or .//*[@aria-selected='true' or contains(@class,'--active')]]",DisplayOnly:true))>0);
+    }
+    private static FieldSpec FindField(string key)
+    {
+        var matches = Fields.Where(f => Same(f.Key,key) || f.Aliases.Any(a => Same(a,key))).ToArray();
+        return matches.Length == 1 ? matches[0] : throw new ArgumentException(
+            matches.Length > 1 ? "Use a section-qualified field name." : "Unknown field: " + key);
+    }
+    private static bool Same(string a,string b) => string.Equals(
+        a.Trim().TrimEnd(':','*').Trim(), b.Trim().TrimEnd(':','*').Trim(), StringComparison.OrdinalIgnoreCase);
+
+@@ELEMENTS@@
+@@ROW_METHODS@@
+@@MENU_METHODS@@
+@@PAGING_METHODS@@
+    private static string XPathLiteral(string value)
+    {
+        var quote=(char)34;
+        if(!value.Contains("'"))return "'"+value+"'";
+        if(!value.Contains(quote))return quote+value+quote;
+        return "concat("+string.Join(", ",value.Split("'").Select((p,i)=>(i==0?"":quote+"'"+quote+", ")+"'"+p+"'"))+")";
+    }
+    internal sealed record FieldSpec(string Key,string Kind,string Locator,string Section,string OptionLocator,bool ReadOnly,string[] Aliases,OptionSpec[] Options);
+    internal sealed record OptionSpec(string Label,string Locator);
+    internal sealed record ChildSpec(string Name,string Locator,string Kind);
+    internal sealed record RowSpec(string Name,string Locator,string Kind,string KeyLocator,bool KeyNormalize,ChildSpec[] Children);
+    internal sealed record PagerSpec(string Name,string Locator,string NextLocator,string PreviousLocator,string PageTemplate,string CurrentLocator,string[] RowLocators);
+    internal sealed record MenuSpec(string Key,string CaptionPath,string[] Path,string[] Actions);
+    internal sealed record Query(string Locator,string? Search = null,string? Relative = null,bool DisplayOnly = false,string? ExactText = null);
+    internal sealed record Resolved(IWebElement Element,IWebElement[] Frames);
+    internal sealed record Box<T>(T Value);
+
+    // An element property resolves again on each use, including its owning frame.
+    public sealed class PageElement
+    {
+        private readonly PageRuntime _runtime;
+        private readonly Query _query;
+        internal PageElement(PageRuntime runtime,Query query) { _runtime=runtime; _query=query; }
+        public string Text => _runtime.Read(_query,e => e.Text);
+        public string Value => _runtime.GetValue(_query);
+        public bool Selected => _runtime.Read(_query,e => e.Selected);
+        public bool Enabled => _runtime.Read(_query,e => e.Enabled);
+        public string? GetAttribute(string name) => _runtime.Read(_query,e => e.GetDomAttribute(name));
+        public void Click() => _runtime.Click(_query);
+        public void SendKeys(string value) => _runtime.Act(_query,e => e.SendKeys(value));
+        public string? GetProperty(string name) => _runtime.Read(_query,e => e.GetDomProperty(name));
+        public void SetValue(string value) => _runtime.SetValue(_query,value);
+    }
+
+    internal sealed class PageRuntime
+    {
+        private readonly IWebDriver _driver;
+        private readonly IJavaScriptExecutor _js;
+        internal WebDriverWait Wait { get; }
+        internal PageRuntime(IWebDriver driver,TimeSpan timeout)
+        {
+            _driver=driver;
+            _js=(IJavaScriptExecutor)driver;
+            Wait=new WebDriverWait(driver,timeout);
+            Wait.IgnoreExceptionTypes(typeof(StaleElementReferenceException),typeof(NoSuchFrameException));
+        }
+        private Resolved? Resolve(Query query)
+        {
+            _driver.SwitchTo().DefaultContent();
+            var result=_js.ExecuteScript(ResolverScript,query.Locator,query.Search,query.Relative,false,query.DisplayOnly,false,query.ExactText)
+                as IDictionary<string,object>;
+            if(result==null) return null;
+            if(result.TryGetValue("error",out var error)) throw new InvalidOperationException(Convert.ToString(error));
+            var frames=((IEnumerable<object>)result["frames"]).OfType<IWebElement>().ToArray();
+            return new Resolved((IWebElement)result["element"],frames);
+        }
+        private void Enter(Resolved resolved)
+        {
+            foreach(var frame in resolved.Frames) _driver.SwitchTo().Frame(frame);
+        }
+        internal T Read<T>(Query query,Func<IWebElement,T> read)
+        {
+            return Wait.Until(_ =>
+            {
+                var resolved=Resolve(query);
+                if(resolved==null) return null;
+                try { Enter(resolved); return new Box<T>(read(resolved.Element)); }
+                finally { _driver.SwitchTo().DefaultContent(); }
+            })!.Value;
+        }
+        internal void Act(Query query,Action<IWebElement> action)
+        {
+            var resolved=Wait.Until(_ => Resolve(query))!;
+            // Actions execute once: a stale/navigation failure never silently repeats a click.
+            try
+            {
+                Enter(resolved);
+                if(!resolved.Element.Enabled || string.Equals(resolved.Element.GetDomAttribute("aria-disabled"),"true",StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Control is disabled.");
+                action(resolved.Element);
+            }
+            finally { _driver.SwitchTo().DefaultContent(); }
+        }
+        internal void Click(Query query) => Act(query, e =>
+        {
+            if(e.Displayed) { e.Click(); return; }
+            var type=e.GetDomProperty("type");
+            if(type is not ("radio" or "checkbox")) throw new InvalidOperationException("Control is not displayed.");
+            var label=_js.ExecuteScript(
+                "const e=arguments[0],r=e.getRootNode(); return Array.from(r.querySelectorAll('label')).find(l=>l.getAttribute('for')===e.id)||e.closest('label');",e) as IWebElement;
+            if(label==null || !label.Displayed) throw new InvalidOperationException("No displayed associated label.");
+            label.Click();
+        });
+        internal void Hover(Query query) => Act(query,e => new Actions(_driver).MoveToElement(e).Perform());
+        internal string GetValue(Query query) => Read(query,e =>
+        {
+            if(e.TagName.Equals("select",StringComparison.OrdinalIgnoreCase))
+                return string.Join(", ",new SelectElement(e).AllSelectedOptions.Select(o=>o.Text));
+            if(e.GetDomProperty("type") is "checkbox" or "radio") return e.Selected ? "true" : "false";
+            return e.TagName is "input" or "textarea" ? e.GetDomProperty("value") ?? "" : e.Text;
+        });
+        internal void Choose(FieldSpec field,string value)
+        {
+            if(string.IsNullOrWhiteSpace(field.OptionLocator))throw new NotSupportedException("No scoped option relation: "+field.Key);
+            var query=new Query(field.Locator);
+            if(field.Kind=="autocomplete")SetValue(query,value); else Click(query);
+            var option=new Query(field.OptionLocator,DisplayOnly:true,ExactText:value.Trim());
+            Wait.Until(_=>Count(option)>0);
+            Click(option);
+            Wait.Until(_=>Same(GetValue(query),value));
+        }
+        internal void SetValue(Query query,string value)
+        {
+            var type=Read(query,e => e.GetDomProperty("type") ?? "");
+            if(type=="date")
+            {
+                if(!DateOnly.TryParseExact(value,"yyyy-MM-dd",System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.None,out _))throw new ArgumentException("Native date inputs require yyyy-MM-dd.");
+                Act(query,e=>
+                {
+                    if(e.GetDomAttribute("readonly")!=null)throw new InvalidOperationException("Control is read-only.");
+                    _js.ExecuteScript("const e=arguments[0],w=e.ownerDocument.defaultView;Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype,'value').set.call(e,arguments[1]);e.dispatchEvent(new w.Event('input',{bubbles:true}));e.dispatchEvent(new w.Event('change',{bubbles:true}));",e,value);
+                });
+                Wait.Until(_=>Read(query,e=>e.GetDomProperty("value"))==value);return;
+            }
+            if(type is "checkbox" or "radio")
+            {
+                if(!bool.TryParse(value,out var desired)) throw new ArgumentException("Use true or false for a checkbox.");
+                if(type=="radio" && !desired) throw new NotSupportedException("Select another radio option instead.");
+                if(Read(query,e => e.Selected)!=desired) Click(query);
+                Wait.Until(_ => Read(query,e => e.Selected)==desired);
+                return;
+            }
+            Act(query,e =>
+            {
+                if(e.TagName.Equals("select",StringComparison.OrdinalIgnoreCase))
+                {
+                    var select=new SelectElement(e);
+                    if(select.IsMultiple) throw new NotSupportedException("Multiple selection needs a dedicated interaction.");
+                    select.SelectByText(value); return;
+                }
+                if(e.TagName!="textarea" && !(e.TagName=="input" && type is "text" or "email" or "password" or "search" or "tel" or "url" or "number" or "date"))
+                    throw new NotSupportedException("This control requires a dedicated interaction.");
+                if(e.GetDomAttribute("readonly")!=null) throw new InvalidOperationException("Control is read-only.");
+                e.Clear(); e.SendKeys(value);
+            });
+            if(type!="date")Wait.Until(_=>Read(query,e=>e.TagName=="select"?new SelectElement(e).SelectedOption.Text==value:e.GetDomProperty("value")==value));
+        }
+        internal int Count(Query query)
+        {
+            _driver.SwitchTo().DefaultContent();
+            return Convert.ToInt32(_js.ExecuteScript(ResolverScript,query.Locator,query.Search,null,true,query.DisplayOnly,false,query.ExactText));
+        }
+        internal bool CanClick(Query query)
+        {
+            var resolved=Resolve(query);if(resolved==null)return false;
+            try
+            {
+                Enter(resolved);
+                return resolved.Element.Displayed && resolved.Element.Enabled && !Convert.ToBoolean(_js.ExecuteScript(
+                    "for(let e=arguments[0];e;e=e.parentElement){if(e.hasAttribute('disabled')||e.getAttribute('aria-disabled')==='true'||e.classList.contains('disabled'))return true;}return false;",resolved.Element));
+            }
+            finally { _driver.SwitchTo().DefaultContent(); }
+        }
+        internal string Fingerprint(Query query)
+        {
+            _driver.SwitchTo().DefaultContent();
+            return Convert.ToString(_js.ExecuteScript(ResolverScript,query.Locator,null,null,false,false,true)) ?? "";
+        }
+        private const string ResolverScript = @@RESOLVER@@;
+    }
+}

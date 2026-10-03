@@ -1,0 +1,8 @@
+v32 verification
+
+Passed: 85 locator-quality checks; 82 page-class DOM checks; 165 existing component checks; 63 new reusable-component/highlighting checks; 24 OrangeHRM pattern checks.
+Passed: 306 generator checks; 39 emitted page classes compiled; 156 runtime XPath escaping checks.
+Built: WinForms application and Windows UI smoke-test project, zero errors. Existing dependency/nullability warnings remain.
+Not executed: Windows UI smoke executable (Linux environment); browser end-to-end tests of generated C# interactions.
+
+Run DOM checks with jsdom@26 and NODE_PATH set to its node_modules directory. Use Verification/PageClasses to regenerate fixture classes. Run Verification/WindowsUi on Windows for native edit/click smoke checks.

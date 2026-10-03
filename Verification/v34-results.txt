@@ -1,0 +1,3 @@
+v34 verified: 35 C# blocked-command/non-overlap/actual inspector mock-driver checks; 14 asynchronous selection checks; 85 locator-quality checks; 19 relationship/CSS checks; 82 page-class DOM checks; 165 component checks; 63 reusable component/highlighting checks.
+WinForms application and Windows UI smoke-test project compile with zero errors. Existing dependency/nullability warnings remain.
+Native Windows UI execution and testing on the user's actual browser/page were not performed.

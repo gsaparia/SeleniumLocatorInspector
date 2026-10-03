@@ -220,3 +220,180 @@ The longer `//input[@name='emailContactUs']` and `//input[@type='text']` variant
 Reduction runs after current-DOM match validation and deduplication, before resilience checks and final recommendations. Main results and generated Selenium code use the reduced list. This chooses length within a verified container family; future DOM changes may still require a more specific locator.
 
 Verification: JavaScript syntax checks and **78 production-JS/lxml checks** passed, including the supplied three-locator example, ambiguous bases, scoped relationships and quoted slashes. A Chromium integration fixture checks the displayed family is reduced to the base locator. Windows/.NET compilation, UI and live-browser validation remain unverified here.
+
+
+## v28 — Compact toolbox and unified Locator Analysis
+
+The main Selenium Locator Inspector is a compact fixed toolbox containing browser/URL controls, Launch Browser, Hook To WebDriver, Locator Analysis, Analyse Network Traffic and Stop. The old element/CSS/XPath/shadow/frame detail fields, Selenium code/stability fields and their copy buttons have been removed from that window. Existing copy commands remain available from the parent grid context menu.
+
+Locator Analysis opens before picking and stays reusable:
+
+- Pick Element and Select Rectangle are at the top of Locator Analysis.
+- The original element grid is the parent grid, sized for five rows plus scrollbars. Clicking or navigating a parent row updates the detailed locator grid in the same window. Rectangle results fill the parent grid.
+- Close hides the analysis window; the toolbox button reopens the same window with its results. Closing the toolbox disposes it. Browser changes/Stop clear stale results.
+- Locator rows are sorted by locator character length, shortest first (then ordinal text/type for ties). Recommendation ranking itself is retained. Recommended CSS and XPath rows are green.
+- Execution, Resilience, Dependencies/risks and Recommendation columns are removed. Scores, match/visibility information, locator basis, reason and container references remain.
+- During JavaScript execution both windows disable their actions and result polling pauses, avoiding competing driver calls.
+
+The JavaScript tester now runs against the first matched original element when several match; zero matches still report an error. `elements` exposes all matches for custom scripts, while the example helpers act on `element` (the first match). Results identify when multiple elements matched.
+
+Get text prefers non-empty rendered text, falls back to textContent and then open-shadow/slot text. Input/textarea values and selected option labels are also supported. This fixes a blank rendered-text value suppressing available div text.
+
+Verification: JavaScript syntax checks and **85 production JS/lxml checks** passed, including first-match actions, div fallbacks, shadow text and control values. Browser integration fixtures were updated but not run here. A Windows UI smoke test checks toolbox contents, parent-grid ownership/five-row viewport, shortest-first rows, green recommendations, refresh, clear and reopen behaviour:
+
+```powershell
+dotnet run --project Verification/WindowsUi/WindowsUi.csproj
+```
+
+Windows/.NET compilation, UI layout/rendering and Chromium integration were not executable in this environment; the included Windows smoke test is unrun. Existing network behaviour is retained, and its verification project excludes the separate Windows UI test sources.
+
+
+## Light and dark themes (v29)
+
+Select **Theme → Light** or **Dark** in the toolbox, Locator Analysis, Network Traffic or Resend Request window. Light uses the Professional Light design with white/slate surfaces and blue actions. Dark uses the Developer Dark design with charcoal/navy surfaces and cyan actions. The selection applies immediately across open windows, and newly opened windows inherit it. It is saved for the current Windows user in the .NET user settings and restored on the next launch; the default is Light. `Theme` is a user-scoped string in `Properties/Settings.settings`. `WebDriversFolder` remains unchanged.
+
+The toolbox has full-width action buttons. Locator Analysis keeps the five-row parent grid, gives the locator grid the main workspace, and places locator/JavaScript testing below it. Recommended CSS/XPath rows remain green, and test metrics retain green/red status colours across theme changes. Network Traffic has a request filter, request count, four full-width detail tabs, a resizable split between grid and body, content-type labels and syntax colours for captured text. Its filter also applies to subsequently captured/imported requests without changing row indices or recorded data. Media preview/download, HAR import/export and request replay remain available. The Resend Request editor uses the same theme.
+
+Syntax colours are a lightweight display aid, not a complete language parser. For large bodies, colouring is bounded to the first 150,000 characters; all content remains available to read and copy. Native scrollbars, file dialogs and some system control borders follow Windows rendering. This is a native WinForms implementation of the prototypes.
+
+### Validation for v29
+
+- Production locator fixture checks: `node Verification/locator-quality.cjs`.
+- Windows UI/theme smoke checks (requires Windows): `dotnet run --project Verification/WindowsUi/WindowsUi.csproj`. These check live changes across toolbox, analysis, network and replay windows; selector synchronization; retained selections/body bytes; theme-aware recommendation/error colours; and request filtering during incoming updates. The tests switch themes without saving over your preference.
+- Optional browser checks: `node Verification/locator-analysis.browser.cjs` (requires Playwright and its Chromium installation).
+
+
+## v30 — Create Page Class
+
+Open **Locator Analysis → Create Page Class** to analyse the current page; picking an element first is unnecessary. Review the C# code, analysed relationships and review notes. Set the class and namespace, then use Update Code, Copy C# or Save .cs. Reanalyse Page refreshes the snapshot. The preview follows the selected light/dark theme.
+
+The analyser uses the flattened DOM and validates generated locators against their original elements. It identifies label/container relationships, associated fields and control types. GetText(label) and SetText(label, value) support text fields, native dropdowns, checkboxes and radio groups. For example, SetText("Gender", "Male") selects the associated option by caption. Duplicate field captions are qualified by section. Unsupported/custom controls are exposed as individual properties with review notes.
+
+When detected, repeated cards/table rows produce GetRow(searchText, optionalContainerName), with relative properties such as Price and Image. Searches cover currently loaded rows. Detected menus produce OpenMenu(menuItem), including parent hover paths. Independent controls receive properties. Ambiguous matches fail instead of silently choosing an element.
+
+The exported single C# file includes its flattened-DOM resolver and requires **.NET 8+, Selenium.WebDriver and Selenium.Support**. Element wrappers resolve fresh original elements and use native Selenium actions in their owning frame, restoring the default frame afterward. Accessible same-origin frames and open shadow roots are supported; inaccessible cross-origin frames and closed shadow roots require separate handling. Paging, virtual scrolling and custom widget interaction require review. Page-class analysis does not record field values.
+
+### Validation for v30
+
+Application sources, Windows UI test sources and eight generated page classes passed direct C# compiler checks. There were 81 DOM-analysis/resolver checks, 57 generator checks and 85 existing locator checks. Live Windows UI and Selenium browser execution remain unverified in this environment.
+
+Run the analyser fixtures with Node and jsdom installed:
+
+```sh
+node Verification/page-class-analysis.cjs
+node Verification/locator-quality.cjs
+```
+
+Run the generator checks against the included metadata fixtures:
+
+```sh
+dotnet run --project Verification/PageClasses/PageClasses.csproj -- Verification/PageClasses/Fixtures generated-pages
+```
+
+The existing Windows UI verification project includes the new preview and toolbar checks.
+
+
+## v31 — Reusable component identities, tables and explicit paging
+
+Create Page Class now recognizes linked/Bootstrap product cards, product wrappers, room cards and conservative repeated-sibling schemas, in addition to existing framework repeaters. It validates common child selectors across every loaded item and prioritizes stable test hooks and meaningful container scopes over bare tag uniqueness.
+
+Exports include Item(name, container), ItemLocator(name, container), ContainerNames and named container helpers. Exact names distinguish Pliers from Long Nose Pliers. PageRow exposes analysed properties, Cell(column) and ClickAction(caption). GetRow(searchText) remains the original substring fallback. GetRowByColumn and GetRowByColumns use header relationships and support composite keys; reordered columns do not change their meaning. Native thead td headers are supported, merged/multi-level headers are flagged, and table rows do not create duplicate nested repeaters.
+
+Detected pagers add PagerNames, NextPage, PreviousPage and, when a numbered pattern exists, GoToPage. Paging is explicit. Disabled parent containers are checked and actions execute once. Controls absent at a boundary are inferred with review warnings. The preview lists templates, sample counts and evidence. Hidden dialogs, date pickers, sliders and positional fallbacks receive review notes.
+
+Read **PageClassQualityAssessment.md** for the seven-site assessment, locator examples, generated API usage, live observations and remaining gaps. The browser inspection covered six sites; Applitools was unavailable and its proposed table pattern was tested only with a constructed fixture. The generated Selenium classes were not executed against the live sites.
+
+Validation: application and Windows UI test projects build; generated page-class sources compile. DOM/resolver fixtures, generator checks, runtime XPath-escaping checks and existing locator regressions pass. Native Windows UI rendering and generated Selenium browser execution remain unverified. Existing WebView2/nullable build warnings remain.
+
+```sh
+npm install jsdom@26
+node Verification/page-class-analysis.cjs
+node Verification/page-component-quality.cjs
+node Verification/locator-quality.cjs
+dotnet run --project Verification/PageClasses/PageClasses.csproj -- Verification/PageClasses/Fixtures generated-pages
+```
+
+The last command emits standalone source files. Compile them in a .NET 8 project referencing Selenium.WebDriver and Selenium.Support. Do not include the generated files directly in the inspector project. The supplied fixtures are constructed metadata for reproducible checks, not captured complete live pages.
+
+
+## v32 — Reusable components and editable relationship review
+
+Flattened DOM analysis remains the first step. The analyser now recognizes native and div-based ARIA tables/cells, cleans hidden sort-menu text from column captions, preserves empty schemas, and reports columns unique only within the loaded sample. Composite row lookup continues to reject multiple matches.
+
+Custom ARIA listbox choices and autocomplete fields have scoped generated interactions. Optional OrangeHRM DOM adapters recognize its non-ARIA dropdowns, autocomplete wrappers, date inputs, pagination icons and attendance widgets. Nameless radio groups use their captioned owner; compound names and paired From/To dates retain their group. Cards can use paragraph captions. Named sections and read-only widget values are exported.
+
+Generated APIs include `SetChoice`, `GetChoice`, `SelectSuggestion`, `SetDate`, `SetDateRange`, `Section(name)`, `OpenTab`, `WaitFor`, `PageRow.SetSelected` and `PageRow.DateCell`. A parameterized `Login(username,password,readyLocator)` is generated when a unique username/email field, password field and login action are recognized. No credentials are embedded. Existing `GetText`, `SetText`, `GetRow`, `Item`, column-key lookup and paging remain available.
+
+In Create Page Class → Analysed relationships:
+
+- Click **any cell in a row** to highlight matching original elements in the browser.
+- Double-click **Locator** or press **F2** to edit. Edits regenerate C# and are retained by Copy C# / Save .cs.
+- Relative row/section children are evaluated against every matching flattened parent, then mapped to originals for highlighting.
+- Choice option rows may match zero until the dropdown is opened. Page templates retain `{page}` and highlight the owning pager until a parameter is supplied by generated code.
+- Reanalyse Page intentionally replaces the snapshot and local edits. Locator syntax/match errors appear in the status area; edited relationships still require review.
+
+Examples:
+
+```csharp
+page.SetChoice("Gender", "Female");
+page.SelectSuggestion("Employee Name", "Person A");
+page.SetDateRange("Date of Application", from, to, "yyyy-MM-dd");
+page.Section("Personal Details").ClickAction("Save");
+page.Section("Time at Work").GetText("State");
+page.OpenTab("Contact Details", expectedHeading: "Contact Details");
+page.GetRowByColumns(new Dictionary<string,string>
+    { ["Id"] = employeeId, ["Last Name"] = lastName }, "Employee Information");
+```
+
+Use names reported by the current analysis; examples are not fixed identifiers for all websites. Custom date formats must match the application. Native date inputs require ISO format. DateCell takes a date and the **displayed** period start, rather than guessing a month/year from changing weekday headers.
+
+### v32 verification
+
+- 82 page-class DOM checks; 165 existing reusable-component checks.
+- 63 new generic component/highlighting checks; 24 OrangeHRM pattern checks.
+- Existing locator-quality checks, including upgrading an already installed older inspector.
+- Generated C# source compilation, generator assertions and runtime XPath-escaping checks.
+- WinForms application and Windows smoke-test project cross-compiled successfully. The smoke test now covers all-cell highlighting callbacks and edited locator persistence.
+
+The Windows UI smoke executable was not run in this Linux environment. Browser interactions through generated C# were not tested end to end here. Cross-origin frames, closed shadow roots, virtual scrolling, canvas chart data, file uploads and unrecognized controls remain explicit adapter/review boundaries. Analysis does not navigate or save business data automatically.
+
+
+## v33 — Relationship filtering, red validation errors and CSS suggestions
+
+In **Create Page Class → Analysed relationships**:
+
+- The filter textbox updates the grid as you type. Search is case insensitive and includes locator, key/name, type, evidence, CSS suggestion and validation text. Clearing it restores rows and retains locator edits.
+- After committing a locator edit (Enter or leave the cell), browser validation checks XPath/CSS syntax and highlights matches. Invalid selectors show a red row, red status message and error text in the validation column. Correcting them clears the error. Valid syntax with zero current matches is reported separately.
+- Click a row to populate its **CSS suggestion (verified)** column. The suggested selector must match exactly the same elements in the current flattened DOM, within each parent for relative children. Stable test/name/id/accessible attributes are preferred over broad tag selectors. Use **Copy CSS suggestion** to copy the selected row's alternative.
+- When no simple stable CSS alternative matches, the status explains that XPath should be retained. Snapshot equivalence does not guarantee equivalent meaning after the page changes. XPath remains preferable for label/text relationships and required for the existing parameterized row/key predicate APIs.
+- Direct generated element lookups, relative element lookups and choice-option selection now support CSS. CSS suggestions do not automatically overwrite your locator. Page templates are syntax checked with page 1 substituted for `{page}`; a zero match is not a syntax error.
+
+v33 verification: 19 new selector validation/CSS checks, 63 reusable-component/highlighting checks, 85 locator-quality checks, 82 page-class DOM checks, 165 component checks, 24 OrangeHRM pattern checks, 306 generator checks and 156 runtime XPath escaping checks. All 39 emitted page classes compile. The application and Windows UI smoke-test project compile; native Windows UI execution was not available in this Linux environment.
+
+
+## v34 — Picker and rectangle-selection responsiveness
+
+### Cause of the freeze
+
+The 250 ms WinForms timer executed `GetSelectedResult()` synchronously on the UI thread. The `ExecuteScript` line must wait for a response from the browser. If page JavaScript, DOM flattening or locator generation is busy, the entire inspector message loop waits with it. Rectangle selection previously generated all intersecting elements' locators in one JavaScript task, delaying browser commands further. The timer also continued polling when no selection was active.
+
+### Fix
+
+- Picker startup, locator tests, highlighting, result reads, connection operations and shutdown now dispatch WebDriver work away from the UI thread.
+- Each inspector owns one serialized asynchronous command queue. Polling uses a non-queued try operation; it skips while any command is in flight. The timer also has an overlap guard and polls only while a picker/selection is active.
+- Reading and clearing a ready result now happen in one browser command, preventing a separate clear from erasing a newer result.
+- Browser selection analysis is deferred from click/mouseup handlers. Rectangle analysis yields between elements and shares one flattened DOM snapshot. No selected elements are silently capped or discarded.
+- A generation token prevents stopped/replaced jobs from publishing stale results. Original selection indices survive partial failures.
+- The Locator Analysis toolbar shows preparation, analysis progress, completion and driver/analysis errors. Navigation resets polling and asks you to pick again. Starting a new selection cancels an older browser analysis at its next yield.
+- Connection replacement and shutdown wait for the existing command stream; they do not abandon an in-flight RPC and start a competing command. Closing during a connection attempt waits asynchronously and disposes the resulting/partially created session appropriately.
+
+The flattened-first approach and the existing locator strategies are retained. The fix keeps the Windows UI responsive while waiting; it cannot make an unresponsive browser execute instantly. A single complex element's locator analysis remains synchronous inside its browser task, and WebDriver's own transport/session timeout still applies. On a very large selection, progress can take time; restart picking or use a narrower rectangle if appropriate.
+
+### Verification
+
+- **35 C# blocked-command/inspector checks**: simulated blocked ExecuteScript, asynchronous caller return, skipped overlapping polls, one command stream, atomic result consumption, and recovery after transport failures.
+- **14 asynchronous browser-selection checks**: yields between elements, one snapshot, cancellation, replacement, progress, errors, partial results and preserved indices.
+- Existing locator-quality, relationship/CSS, page-class and component checks pass.
+- WinForms application and Windows UI smoke-test project compile successfully. Native Windows UI execution and reproduction against your particular WebDriver/page were not available in this Linux environment.
+
+Run `dotnet run --project Verification/InspectorCommands/InspectorCommands.csproj` for blocked-driver tests. Run the jsdom checks with `NODE_PATH` pointing to jsdom@26. Windows native UI smoke tests remain in `Verification/WindowsUi`.

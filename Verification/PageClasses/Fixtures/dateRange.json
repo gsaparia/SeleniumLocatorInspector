@@ -1,0 +1,60 @@
+{
+  "title": "",
+  "url": "https://components.test/",
+  "fields": [
+    {
+      "key": "Date of Application / From",
+      "label": "From",
+      "group": "Date of Application",
+      "section": "Recruitment",
+      "kind": "date",
+      "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' oxd-input-group ')][.//div[.='Date of Application']]//input",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Nearest single-control container text"
+    },
+    {
+      "key": "Date of Application / To",
+      "label": "To",
+      "group": "Date of Application",
+      "section": "Recruitment",
+      "kind": "date",
+      "locator": "//input[@placeholder='To']",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Placeholder fallback (no textual label)"
+    }
+  ],
+  "elements": [
+    {
+      "name": "Native date",
+      "kind": "input:date",
+      "locator": "//label[.='Native date']//input",
+      "evidence": "Custom/file control: use element property; review interaction"
+    }
+  ],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [
+    {
+      "name": "Recruitment",
+      "kind": "form",
+      "locator": "//form[@aria-label='Recruitment']",
+      "evidence": "Form owned by nearest section heading"
+    }
+  ],
+  "coverage": {
+    "supportedFields": 2,
+    "locatorOnly": 1,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": [
+    "Dedicated interaction required: Native date"
+  ]
+}

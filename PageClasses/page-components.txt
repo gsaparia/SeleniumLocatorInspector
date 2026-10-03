@@ -1,0 +1,48 @@
+    public static IReadOnlyList<string> ContainerNames { get; } = Rows.Select(r=>r.Name).ToArray();
+    private static RowSpec FindRow(string container)
+        => Rows.SingleOrDefault(r=>Same(r.Name,container)) ?? throw new ArgumentException("Unknown container: "+container);
+
+    // Exact item-name lookup; prices, descriptions and action captions are not identity keys.
+    public string ItemLocator(string name,string container)
+    {
+        var row=FindRow(container);
+        if(string.IsNullOrWhiteSpace(name))throw new ArgumentException("Provide the item name.");
+        if(string.IsNullOrEmpty(row.KeyLocator))throw new InvalidOperationException("This container has no validated name key. Use column keys or GetRow text search.");
+        var text=XPathLiteral(string.Join(" ",name.Split((char[]?)null,StringSplitOptions.RemoveEmptyEntries)));
+        var predicate=row.KeyNormalize ? "normalize-space(.)="+text : ".="+text;
+        return "("+row.Locator+")["+row.KeyLocator+"["+predicate+"]]";
+    }
+    public PageRow Item(string name,string container)
+    {
+        var row=FindRow(container);
+        var query=new Query(ItemLocator(name,container),DisplayOnly:true);
+        EnsureUniqueRow(query);
+        return new PageRow(_runtime,row,query);
+    }
+    public PageRow GetRowByColumn(string column,string value,string container)
+        => GetRowByColumns(new Dictionary<string,string>{{column,value}},container);
+    public PageRow GetRowByColumns(IReadOnlyDictionary<string,string> keys,string container)
+    {
+        var row=FindRow(container);
+        if(row.Kind!="table")throw new ArgumentException("Column keys require a table container.");
+        if(keys.Count==0)throw new ArgumentException("Provide at least one column key.");
+        var predicates=new List<string>();
+        foreach(var key in keys)
+        {
+            var column=row.Children.SingleOrDefault(c=>c.Kind=="column"&&Same(c.Name,key.Key))
+                ?? throw new ArgumentException("Unknown or unsupported column: "+key.Key);
+            predicates.Add(column.Locator+"[normalize-space(.)="+XPathLiteral(string.Join(" ",key.Value.Split((char[]?)null,StringSplitOptions.RemoveEmptyEntries)))+"]");
+        }
+        var query=new Query("("+row.Locator+")["+string.Join(" and ",predicates)+"]",DisplayOnly:true);
+        EnsureUniqueRow(query);
+        return new PageRow(_runtime,row,query);
+    }
+    private void EnsureUniqueRow(Query query)
+    {
+        _runtime.Wait.Until(_=>
+        {
+            var count=_runtime.Count(query);
+            if(count>1)throw new InvalidOperationException("Multiple matching items. Use a composite key or narrower container.");
+            return count==1;
+        });
+    }

@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="WindowsUi/**/*.cs" />
+    <Compile Remove="PageClasses/**/*.cs" />
     <Compile Include="../Network/NetworkBodyRetention.cs" Link="NetworkBodyRetention.cs" />
     <Compile Include="../Network/NetworkModels.cs" Link="NetworkModels.cs" />
     <Compile Include="../Network/HttpCapture.cs" Link="HttpCapture.cs" />

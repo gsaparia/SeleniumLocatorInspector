@@ -1,0 +1,85 @@
+{
+  "title": "",
+  "url": "https://fixture.test/",
+  "fields": [],
+  "elements": [],
+  "repeaters": [
+    {
+      "name": "Table",
+      "kind": "table",
+      "matrix": false,
+      "keyColumns": [
+        "Username",
+        "Status"
+      ],
+      "tableLocator": "//div[@role='table']",
+      "locator": "//div[@role='table']//*[@role='row'][./*[@role='gridcell' or @role='cell']][not(count(*)=1 and *[@colspan]) and not(normalize-space(.)='No Records Found' or normalize-space(.)='No records found' or normalize-space(.)='No Results Found' or normalize-space(.)='No results found' or normalize-space(.)='No data available' or normalize-space(.)='No Data Available' or normalize-space(.)='Nothing to display')]",
+      "keyLocator": "",
+      "keyNormalize": true,
+      "sampleCount": 1,
+      "evidence": "Header-mapped data rows; Username, Status unique only in loaded sample",
+      "children": [
+        {
+          "name": "Username",
+          "locator": "./*[@role=\"cell\" or @role=\"gridcell\"][count(ancestor::*[@role=\"grid\" or @role=\"table\"][1]//*[@role=\"columnheader\"][text()[normalize-space(.)='Username']]/preceding-sibling::*)+1][count(ancestor::*[@role=\"grid\" or @role=\"table\"][1]//*[@role=\"columnheader\"][text()[normalize-space(.)='Username']])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        },
+        {
+          "name": "Status",
+          "locator": "./*[@role=\"cell\" or @role=\"gridcell\"][count(ancestor::*[@role=\"grid\" or @role=\"table\"][1]//*[@role=\"columnheader\"][text()[normalize-space(.)='Status']]/preceding-sibling::*)+1][count(ancestor::*[@role=\"grid\" or @role=\"table\"][1]//*[@role=\"columnheader\"][text()[normalize-space(.)='Status']])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        }
+      ]
+    }
+  ],
+  "menus": [
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "1",
+      "section": "Pagination Navigation",
+      "path": [
+        "//nav[@aria-label='Pagination Navigation']//button[.='1']"
+      ],
+      "captionPath": "1"
+    },
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "2",
+      "section": "Pagination Navigation",
+      "path": [
+        "//nav[@aria-label='Pagination Navigation']//button[.='2']"
+      ],
+      "captionPath": "2"
+    }
+  ],
+  "pagers": [
+    {
+      "name": "Pagination Navigation",
+      "locator": "//nav[@aria-label='Pagination Navigation']",
+      "currentLocator": "//nav[@aria-label='Pagination Navigation']//*[contains(concat(' ',normalize-space(@class),' '),' oxd-pagination-page-item--page-selected ')]",
+      "rowLocators": [
+        "//div[@role='table']//*[@role='row'][./*[@role='gridcell' or @role='cell']][not(count(*)=1 and *[@colspan]) and not(normalize-space(.)='No Records Found' or normalize-space(.)='No records found' or normalize-space(.)='No Results Found' or normalize-space(.)='No results found' or normalize-space(.)='No data available' or normalize-space(.)='No Data Available' or normalize-space(.)='Nothing to display')]"
+      ],
+      "nextLocator": "//nav[@aria-label='Pagination Navigation']//button[.//i[contains(concat(' ',normalize-space(@class),' '),' bi-chevron-right ')]]",
+      "previousLocator": "//nav[@aria-label='Pagination Navigation']//*[self::a or self::button][@rel='prev' or @aria-label='Previous' or normalize-space(.)='Previous' or normalize-space(.)='Prev' or normalize-space(.)='Previous page']",
+      "pageTemplate": "//nav[@aria-label='Pagination Navigation']//button[normalize-space(.)={page}]",
+      "evidence": "Explicit pager region; carousel controls excluded"
+    }
+  ],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 1
+  },
+  "warnings": [
+    "Pager previous control absent in this snapshot; boundary locator is inferred and needs checking on another page."
+  ]
+}

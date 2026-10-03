@@ -1,0 +1,42 @@
+{
+  "title": "",
+  "url": "https://components.test/",
+  "fields": [],
+  "elements": [],
+  "repeaters": [],
+  "menus": [
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "User Management",
+      "section": "Topbar Menu",
+      "path": [
+        "//nav[@aria-label='Topbar Menu']//span[.='User Management']"
+      ],
+      "captionPath": "User Management"
+    },
+    {
+      "actions": [
+        "click",
+        "click"
+      ],
+      "key": "Users",
+      "section": "Topbar Menu",
+      "path": [
+        "//nav[@aria-label='Topbar Menu']//span[.='User Management']",
+        "//nav[@aria-label='Topbar Menu']//a[.='Users']"
+      ],
+      "captionPath": "User Management > Users"
+    }
+  ],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": []
+}

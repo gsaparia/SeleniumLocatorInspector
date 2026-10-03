@@ -1,0 +1,25 @@
+{
+  "title": "",
+  "url": "https://fixture.test/",
+  "fields": [],
+  "elements": [],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [
+    {
+      "name": "Time at Work",
+      "kind": "widget",
+      "locator": "//body/div/div",
+      "children": [],
+      "evidence": "Direct header identifies inner widget; relative metrics validated"
+    }
+  ],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": []
+}

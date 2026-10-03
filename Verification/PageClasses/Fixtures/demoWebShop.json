@@ -1,0 +1,90 @@
+{
+  "title": "",
+  "url": "https://example.test/demoWebShop",
+  "fields": [
+    {
+      "key": "Display",
+      "label": "Display",
+      "group": "",
+      "section": "Accessories",
+      "kind": "select",
+      "locator": "//div[.//span[.='Display']]//select",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [
+        "Accessories"
+      ],
+      "evidence": "Nearest single-control container text"
+    }
+  ],
+  "elements": [],
+  "repeaters": [
+    {
+      "name": "Products",
+      "kind": "card",
+      "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' product-grid ')]//div[contains(concat(' ',normalize-space(@class),' '),' product-item ')]",
+      "keyLocator": ".//h2[contains(concat(' ',normalize-space(@class),' '),' product-title ')]//a",
+      "keyNormalize": false,
+      "sampleCount": 2,
+      "evidence": "Common child selectors validated across 2 loaded items; exact name template",
+      "children": [
+        {
+          "name": "Price",
+          "locator": ".//span[contains(concat(' ',normalize-space(@class),' '),' actual-price ')]",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Name",
+          "locator": ".//h2[contains(concat(' ',normalize-space(@class),' '),' product-title ')]//a",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Image",
+          "locator": ".//img",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "ProductLink",
+          "locator": ".//h2[contains(concat(' ',normalize-space(@class),' '),' product-title ')]//a",
+          "kind": "link",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "AddToCartButton",
+          "locator": ".//input[@value='Add to cart']",
+          "kind": "action",
+          "evidence": "One matching child in every sampled item"
+        }
+      ]
+    }
+  ],
+  "menus": [],
+  "pagers": [
+    {
+      "name": "Products",
+      "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' pager ')]",
+      "currentLocator": "",
+      "rowLocators": [
+        "//div[contains(concat(' ',normalize-space(@class),' '),' product-grid ')]//div[contains(concat(' ',normalize-space(@class),' '),' product-item ')]"
+      ],
+      "nextLocator": "//div[contains(concat(' ',normalize-space(@class),' '),' pager ')]//a[.='Next']",
+      "previousLocator": "//div[contains(concat(' ',normalize-space(@class),' '),' pager ')]//*[self::a or self::button][@rel='prev' or @aria-label='Previous' or normalize-space(.)='Previous' or normalize-space(.)='Prev' or normalize-space(.)='Previous page']",
+      "pageTemplate": "//div[contains(concat(' ',normalize-space(@class),' '),' pager ')]//a[normalize-space(.)={page}]",
+      "evidence": "Explicit pager region; carousel controls excluded"
+    }
+  ],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 1,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 2
+  },
+  "warnings": [
+    "Pager previous control absent in this snapshot; boundary locator is inferred and needs checking on another page."
+  ]
+}

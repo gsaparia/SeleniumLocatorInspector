@@ -1,0 +1,102 @@
+{
+  "checks": 24,
+  "fixtures": [
+    {
+      "name": "native-login",
+      "fields": [
+        {
+          "key": "Username",
+          "kind": "text"
+        },
+        {
+          "key": "Password",
+          "kind": "text"
+        }
+      ],
+      "repeaters": [],
+      "pagers": [],
+      "warnings": []
+    },
+    {
+      "name": "custom-select",
+      "fields": [
+        {
+          "key": "Job Title",
+          "kind": "custom-select"
+        }
+      ],
+      "repeaters": [],
+      "pagers": [],
+      "warnings": []
+    },
+    {
+      "name": "aria-table-without-colindex",
+      "fields": [],
+      "repeaters": [
+        {
+          "name": "Table",
+          "count": 1
+        }
+      ],
+      "pagers": [],
+      "warnings": []
+    },
+    {
+      "name": "directory-p-caption",
+      "fields": [],
+      "repeaters": [
+        {
+          "name": "Repeated items",
+          "count": 2
+        }
+      ],
+      "pagers": [],
+      "warnings": []
+    },
+    {
+      "name": "nameless-gender",
+      "fields": [
+        {
+          "key": "Gender",
+          "kind": "radio"
+        }
+      ],
+      "repeaters": [],
+      "pagers": [],
+      "warnings": []
+    },
+    {
+      "name": "icon-pager",
+      "fields": [],
+      "repeaters": [
+        {
+          "name": "Table",
+          "count": 1
+        }
+      ],
+      "pagers": [
+        {
+          "nextMatches": 1,
+          "numbered": true
+        }
+      ],
+      "warnings": [
+        "Pager previous control absent in this snapshot; boundary locator is inferred and needs checking on another page."
+      ]
+    },
+    {
+      "name": "section-save",
+      "fields": [],
+      "repeaters": [],
+      "pagers": [],
+      "warnings": []
+    },
+    {
+      "name": "nested-dashboard-widget",
+      "fields": [],
+      "repeaters": [],
+      "pagers": [],
+      "warnings": []
+    }
+  ]
+}

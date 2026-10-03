@@ -1,0 +1,66 @@
+{
+  "title": "",
+  "url": "https://example.test/inferredInvoices",
+  "fields": [],
+  "elements": [],
+  "repeaters": [
+    {
+      "name": "Invoices",
+      "kind": "card",
+      "locator": "//div//article[contains(concat(' ',normalize-space(@class),' '),' invoice-unit ')]",
+      "keyLocator": ".//h3",
+      "keyNormalize": false,
+      "sampleCount": 2,
+      "evidence": "Inferred sibling schema; Common child selectors validated across 2 loaded items; exact name template",
+      "children": [
+        {
+          "name": "Name",
+          "locator": ".//h3",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "OpenButton",
+          "locator": ".//button[.='Open']",
+          "kind": "action",
+          "evidence": "One matching child in every sampled item"
+        }
+      ]
+    }
+  ],
+  "menus": [],
+  "pagers": [],
+  "sections": [
+    {
+      "name": "Invoices",
+      "kind": "widget",
+      "locator": "//section",
+      "children": [],
+      "evidence": "Direct header identifies inner widget; relative metrics validated"
+    },
+    {
+      "name": "INV-001",
+      "kind": "widget",
+      "locator": "//div/article[1]",
+      "children": [],
+      "evidence": "Direct header identifies inner widget; relative metrics validated"
+    },
+    {
+      "name": "INV-002",
+      "kind": "widget",
+      "locator": "//div/article[2]",
+      "children": [],
+      "evidence": "Direct header identifies inner widget; relative metrics validated"
+    }
+  ],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 2
+  },
+  "warnings": [
+    "Positional relationship needs review: //div/article[1]",
+    "Positional relationship needs review: //div/article[2]"
+  ]
+}

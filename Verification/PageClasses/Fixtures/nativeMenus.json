@@ -1,0 +1,40 @@
+{
+  "title": "",
+  "url": "https://example.test/nativeMenus",
+  "fields": [],
+  "elements": [],
+  "repeaters": [],
+  "menus": [
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "Home",
+      "section": "",
+      "path": [
+        "//nav//a[.='Home']"
+      ],
+      "captionPath": "Home"
+    },
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "Categories",
+      "section": "",
+      "path": [
+        "//nav//button[.='Categories']"
+      ],
+      "captionPath": "Categories"
+    }
+  ],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": []
+}

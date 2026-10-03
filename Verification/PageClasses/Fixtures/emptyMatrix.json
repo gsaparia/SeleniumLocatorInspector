@@ -1,0 +1,56 @@
+{
+  "title": "",
+  "url": "https://components.test/",
+  "fields": [],
+  "elements": [],
+  "repeaters": [
+    {
+      "name": "Timesheet",
+      "kind": "table",
+      "matrix": true,
+      "keyColumns": [],
+      "tableLocator": "//table",
+      "locator": "(//table/tbody/tr[td] | //table/tr[td])[not(count(*)=1 and *[@colspan]) and not(normalize-space(.)='No Records Found' or normalize-space(.)='No records found' or normalize-space(.)='No Results Found' or normalize-space(.)='No results found' or normalize-space(.)='No data available' or normalize-space(.)='No Data Available' or normalize-space(.)='Nothing to display')]",
+      "keyLocator": "",
+      "keyNormalize": true,
+      "sampleCount": 0,
+      "evidence": "Header-mapped data rows; empty schema preserved; date matrix",
+      "children": [
+        {
+          "name": "Project",
+          "locator": "./td[count(ancestor::table[1]/thead/tr/*[text()[normalize-space(.)='Project']]/preceding-sibling::*)+1][count(ancestor::table[1]/thead/tr/*[text()[normalize-space(.)='Project']])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        },
+        {
+          "name": "Activity",
+          "locator": "./td[count(ancestor::table[1]/thead/tr/*[text()[normalize-space(.)='Activity']]/preceding-sibling::*)+1][count(ancestor::table[1]/thead/tr/*[text()[normalize-space(.)='Activity']])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        },
+        {
+          "name": "28Mon",
+          "locator": "./td[count(ancestor::table[1]/thead/tr/*[text()[normalize-space(.)='28Mon']]/preceding-sibling::*)+1][count(ancestor::table[1]/thead/tr/*[text()[normalize-space(.)='28Mon']])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        },
+        {
+          "name": "29Tue",
+          "locator": "./td[count(ancestor::table[1]/thead/tr/*[text()[normalize-space(.)='29Tue']]/preceding-sibling::*)+1][count(ancestor::table[1]/thead/tr/*[text()[normalize-space(.)='29Tue']])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        }
+      ]
+    }
+  ],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": []
+}

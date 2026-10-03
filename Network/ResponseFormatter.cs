@@ -21,7 +21,7 @@ internal static class ResponseFormatter
 
     public static string HeaderType(string headers)
     {
-        foreach (var line in headers.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        foreach (var line in headers.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
         {
             var separator = line.IndexOf(':');
             if (separator > 0 && line[..separator].Trim().Equals("Content-Type", StringComparison.OrdinalIgnoreCase))

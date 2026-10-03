@@ -1,0 +1,43 @@
+{
+  "title": "",
+  "url": "https://example.test/hiddenCopy",
+  "fields": [],
+  "elements": [],
+  "repeaters": [
+    {
+      "name": "Products",
+      "kind": "card",
+      "locator": "//body/div//div[contains(concat(' ',normalize-space(@class),' '),' card ')]",
+      "keyLocator": ".//h5[contains(concat(' ',normalize-space(@class),' '),' card-title ')]",
+      "keyNormalize": false,
+      "sampleCount": 3,
+      "evidence": "Common child selectors validated across 3 loaded items; exact name template",
+      "children": [
+        {
+          "name": "Name",
+          "locator": ".//h5[contains(concat(' ',normalize-space(@class),' '),' card-title ')]",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Image",
+          "locator": ".//img",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        }
+      ]
+    }
+  ],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 3
+  },
+  "warnings": [
+    "Repeated item names are not unique in card; provide an additional key or narrower scope."
+  ]
+}

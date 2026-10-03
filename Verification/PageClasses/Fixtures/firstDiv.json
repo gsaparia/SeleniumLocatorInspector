@@ -1,0 +1,42 @@
+{
+  "title": "",
+  "url": "https://example.test/page",
+  "fields": [
+    {
+      "key": "User Name",
+      "label": "User Name",
+      "group": "",
+      "section": "",
+      "kind": "text",
+      "locator": "//body[.//div[.='User Name']]//input",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Nearest single-control container text"
+    },
+    {
+      "key": "Custom Choice",
+      "label": "Custom Choice",
+      "section": "",
+      "kind": "custom-select",
+      "locator": "//div[@aria-label='Custom Choice']",
+      "optionLocator": "//body//*[@role='option']",
+      "aliases": [],
+      "options": [],
+      "evidence": "Accessible label; ARIA listbox choice"
+    }
+  ],
+  "elements": [],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 2,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": []
+}

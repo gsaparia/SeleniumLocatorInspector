@@ -72,7 +72,14 @@ const source = fs.readFileSync(path.join(__dirname,'../JavaScript/locator-inspec
       const ambiguous = await analyser.executeLocatorJavaScript('input', 'element.click();');
       const measure = analyser.testLocator('#script-input', -1);
       const simple = analyser.generateLocators(document.querySelector('#script-click'));
-      return {input,tick,untick,select,click,clicks,ambiguous,measure,
+      const firstDiv = document.createElement('div'); firstDiv.className='script-text'; firstDiv.textContent='First div text';
+      const secondDiv = document.createElement('div'); secondDiv.className='script-text'; secondDiv.textContent='Second div text';
+      panel.append(firstDiv,secondDiv);
+      const divText = await analyser.executeLocatorJavaScript('.script-text','return getText();');
+      const shadowDiv = document.createElement('div'); shadowDiv.id='script-shadow-text';
+      shadowDiv.attachShadow({mode:'open'}).innerHTML='<span>Shadow div text</span>'; panel.appendChild(shadowDiv);
+      const shadowText = await analyser.executeLocatorJavaScript('#script-shadow-text','return getText();');
+      return {input,tick,untick,select,click,clicks,ambiguous,measure,divText,shadowText,
         translated:simple.detailedCandidates.some(c => c.value.includes('translate(')),
         textSimplified:simple.detailedCandidates.some(c => c.value.includes("[.='Click']"))};
     });
@@ -80,7 +87,9 @@ const source = fs.readFileSync(path.join(__dirname,'../JavaScript/locator-inspec
     assert.ok(scriptResults.tick.result==='true' && scriptResults.untick.result==='false');
     assert.ok(scriptResults.select.result==='two');
     assert.ok(scriptResults.click.success && scriptResults.clicks===1);
-    assert.ok(!scriptResults.ambiguous.success);
+    assert.ok(scriptResults.ambiguous.success && scriptResults.ambiguous.count>1);
+    assert.ok(scriptResults.divText.success && scriptResults.divText.result==='First div text' && scriptResults.divText.count===2);
+    assert.ok(scriptResults.shadowText.success && scriptResults.shadowText.result==='Shadow div text');
     assert.ok(scriptResults.measure.width>0 && scriptResults.measure.height>0);
     assert.ok(!scriptResults.translated && scriptResults.textSimplified);
     const shortestResults = await page.evaluate(() => {

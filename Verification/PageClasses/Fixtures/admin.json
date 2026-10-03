@@ -1,0 +1,85 @@
+{
+  "title": "",
+  "url": "https://example.test/page",
+  "fields": [
+    {
+      "key": "User Name",
+      "label": "User Name",
+      "group": "",
+      "section": "Enter details to login",
+      "kind": "text",
+      "locator": "//input[@placeholder='User Name']",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Placeholder fallback (no textual label)"
+    },
+    {
+      "key": "Password",
+      "label": "Password",
+      "group": "",
+      "section": "Enter details to login",
+      "kind": "text",
+      "locator": "//input[@placeholder='Password']",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Placeholder fallback (no textual label)"
+    },
+    {
+      "key": "Remember me",
+      "label": "Remember me",
+      "group": "",
+      "section": "Remember me",
+      "kind": "checkbox",
+      "locator": "//label[.//h3[.='Remember me']]//input",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Text inside wrapping label"
+    }
+  ],
+  "elements": [
+    {
+      "name": "Sign In",
+      "kind": "input:submit",
+      "locator": "//form[./h1[.='Enter details to login']]/label[4]/input",
+      "evidence": "Standalone action or unlabelled control"
+    }
+  ],
+  "repeaters": [],
+  "menus": [
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "Before you begin",
+      "section": "User Guides",
+      "path": [
+        "//ul[contains(concat(' ',normalize-space(@class),' '),' nav_user_guide_list ')]//a[.='Before you begin']"
+      ],
+      "captionPath": "Before you begin"
+    }
+  ],
+  "pagers": [],
+  "sections": [
+    {
+      "name": "Enter details to login",
+      "kind": "form",
+      "locator": "//form[contains(concat(' ',normalize-space(@class),' '),' login ')]",
+      "evidence": "Form owned by nearest section heading"
+    }
+  ],
+  "coverage": {
+    "supportedFields": 3,
+    "locatorOnly": 1,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": [
+    "Positional relationship needs review: //form[./h1[.='Enter details to login']]/label[4]/input"
+  ]
+}

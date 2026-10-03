@@ -1,0 +1,91 @@
+{
+  "title": "",
+  "url": "https://example.test/demoblaze",
+  "fields": [],
+  "elements": [],
+  "repeaters": [
+    {
+      "name": "Products",
+      "kind": "card",
+      "locator": "//div[@id='tbodyid']//div[contains(concat(' ',normalize-space(@class),' '),' card ')]",
+      "keyLocator": ".//h4[contains(concat(' ',normalize-space(@class),' '),' card-title ')]//a",
+      "keyNormalize": false,
+      "sampleCount": 2,
+      "evidence": "Common child selectors validated across 2 loaded items; exact name template",
+      "children": [
+        {
+          "name": "Price",
+          "locator": ".//div[contains(concat(' ',normalize-space(@class),' '),' card-block ')]//h5",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Name",
+          "locator": ".//h4[contains(concat(' ',normalize-space(@class),' '),' card-title ')]//a",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Image",
+          "locator": ".//img",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "ProductLink",
+          "locator": ".//h4[contains(concat(' ',normalize-space(@class),' '),' card-title ')]//a",
+          "kind": "link",
+          "evidence": "One matching child in every sampled item"
+        }
+      ]
+    }
+  ],
+  "menus": [
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "Previous",
+      "section": "",
+      "path": [
+        "//nav//button[.='Previous']"
+      ],
+      "captionPath": "Previous"
+    },
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "Next",
+      "section": "",
+      "path": [
+        "//nav//button[.='Next']"
+      ],
+      "captionPath": "Next"
+    }
+  ],
+  "pagers": [
+    {
+      "name": "Products",
+      "locator": "//ul[contains(concat(' ',normalize-space(@class),' '),' pagination ')]",
+      "currentLocator": "",
+      "rowLocators": [
+        "//div[@id='tbodyid']//div[contains(concat(' ',normalize-space(@class),' '),' card ')]"
+      ],
+      "nextLocator": "//ul[contains(concat(' ',normalize-space(@class),' '),' pagination ')]//button[.='Next']",
+      "previousLocator": "//ul[contains(concat(' ',normalize-space(@class),' '),' pagination ')]//button[.='Previous']",
+      "pageTemplate": "",
+      "evidence": "Explicit pager region; carousel controls excluded"
+    }
+  ],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 2
+  },
+  "warnings": [
+    "Hidden dialogs are outside this snapshot. Open each dialog, then Reanalyse Page to generate its scoped fields."
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "title": "",
+  "url": "https://example.test/toolshop",
+  "fields": [],
+  "elements": [],
+  "repeaters": [
+    {
+      "name": "Products",
+      "kind": "card",
+      "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' container ')]//a[contains(concat(' ',normalize-space(@class),' '),' card ')]",
+      "keyLocator": ".//h5[@data-test='product-name']",
+      "keyNormalize": true,
+      "sampleCount": 3,
+      "evidence": "Common child selectors validated across 3 loaded items; exact name template",
+      "children": [
+        {
+          "name": "Price",
+          "locator": ".//span[@data-test='product-price']",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Name",
+          "locator": ".//h5[@data-test='product-name']",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Image",
+          "locator": ".//img",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "ProductLink",
+          "locator": ".",
+          "kind": "link",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "CompareButton",
+          "locator": ".//button[@aria-label='Compare']",
+          "kind": "action",
+          "evidence": "One matching child in every sampled item"
+        }
+      ]
+    }
+  ],
+  "menus": [
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "«",
+      "section": "",
+      "path": [
+        "//nav//button[.='«']"
+      ],
+      "captionPath": "«"
+    },
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "1",
+      "section": "",
+      "path": [
+        "//nav//button[.='1']"
+      ],
+      "captionPath": "1"
+    },
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "2",
+      "section": "",
+      "path": [
+        "//nav//button[.='2']"
+      ],
+      "captionPath": "2"
+    },
+    {
+      "actions": [
+        "click"
+      ],
+      "key": "»",
+      "section": "",
+      "path": [
+        "//nav//button[.='»']"
+      ],
+      "captionPath": "»"
+    }
+  ],
+  "pagers": [
+    {
+      "name": "Pagination",
+      "locator": "//ul[contains(concat(' ',normalize-space(@class),' '),' pagination ')]",
+      "currentLocator": "//ul[contains(concat(' ',normalize-space(@class),' '),' pagination ')]//*[contains(concat(' ',normalize-space(@class),' '),' active ')]",
+      "rowLocators": [],
+      "nextLocator": "//ul[contains(concat(' ',normalize-space(@class),' '),' pagination ')]//button[@aria-label='Next']",
+      "previousLocator": "//ul[contains(concat(' ',normalize-space(@class),' '),' pagination ')]//button[@aria-label='Previous']",
+      "pageTemplate": "//ul[contains(concat(' ',normalize-space(@class),' '),' pagination ')]//button[normalize-space(.)={page}]",
+      "evidence": "Explicit pager region; carousel controls excluded"
+    }
+  ],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 3
+  },
+  "warnings": []
+}

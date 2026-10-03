@@ -1,0 +1,47 @@
+{
+  "title": "",
+  "url": "https://example.test/page",
+  "fields": [],
+  "elements": [],
+  "repeaters": [
+    {
+      "name": "Accounts",
+      "kind": "table",
+      "matrix": false,
+      "keyColumns": [
+        "Name",
+        "Status"
+      ],
+      "tableLocator": "//table",
+      "locator": "(//table/tbody/tr[td] | //table/tr[td])[not(count(*)=1 and *[@colspan]) and not(normalize-space(.)='No Records Found' or normalize-space(.)='No records found' or normalize-space(.)='No Results Found' or normalize-space(.)='No results found' or normalize-space(.)='No data available' or normalize-space(.)='No Data Available' or normalize-space(.)='Nothing to display')]",
+      "keyLocator": "",
+      "keyNormalize": true,
+      "sampleCount": 2,
+      "evidence": "Header-mapped data rows; Name, Status unique only in loaded sample",
+      "children": [
+        {
+          "name": "Name",
+          "locator": "./td[count(ancestor::table[1]/thead/tr/*[text()[normalize-space(.)='Name']]/preceding-sibling::*)+1][count(ancestor::table[1]/thead/tr/*[text()[normalize-space(.)='Name']])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        },
+        {
+          "name": "Status",
+          "locator": "./td[count(ancestor::table[1]/thead/tr/*[text()[normalize-space(.)='Status']]/preceding-sibling::*)+1][count(ancestor::table[1]/thead/tr/*[text()[normalize-space(.)='Status']])=1]",
+          "kind": "column",
+          "evidence": "Visible/direct header caption → current column index; exact header guard"
+        }
+      ]
+    }
+  ],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 0,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 2
+  },
+  "warnings": []
+}

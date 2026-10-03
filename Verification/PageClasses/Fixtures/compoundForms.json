@@ -1,0 +1,125 @@
+{
+  "title": "",
+  "url": "https://components.test/",
+  "fields": [
+    {
+      "key": "Personal Details / Gender",
+      "label": "Gender",
+      "section": "Personal Details",
+      "kind": "radio",
+      "locator": "//form/div[2]",
+      "options": [
+        {
+          "label": "Male",
+          "locator": "//form/div[2]//label[.='Male']//input"
+        },
+        {
+          "label": "Female",
+          "locator": "//form/div[2]//label[.='Female']//input"
+        }
+      ],
+      "aliases": [],
+      "evidence": "Group caption → option label → associated radio"
+    },
+    {
+      "key": "Custom Fields / Gender",
+      "label": "Gender",
+      "section": "Custom Fields",
+      "kind": "radio",
+      "locator": "//div[./h6[.='Custom Fields']]/form/div",
+      "options": [
+        {
+          "label": "A",
+          "locator": "//div[./h6[.='Custom Fields']]/form/div//label[.='A']//input"
+        },
+        {
+          "label": "B",
+          "locator": "//div[./h6[.='Custom Fields']]/form/div//label[.='B']//input"
+        }
+      ],
+      "aliases": [],
+      "evidence": "Group caption → option label → associated radio"
+    },
+    {
+      "key": "Employee Full Name / First Name",
+      "label": "First Name",
+      "group": "Employee Full Name",
+      "section": "Personal Details",
+      "kind": "text",
+      "locator": "//input[@placeholder='First Name']",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Placeholder fallback (no textual label)"
+    },
+    {
+      "key": "Employee Full Name / Middle Name",
+      "label": "Middle Name",
+      "group": "Employee Full Name",
+      "section": "Personal Details",
+      "kind": "text",
+      "locator": "//input[@placeholder='Middle Name']",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Placeholder fallback (no textual label)"
+    },
+    {
+      "key": "Employee Full Name / Last Name",
+      "label": "Last Name",
+      "group": "Employee Full Name",
+      "section": "Personal Details",
+      "kind": "text",
+      "locator": "//input[@placeholder='Last Name']",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Placeholder fallback (no textual label)"
+    }
+  ],
+  "elements": [
+    {
+      "name": "Save",
+      "kind": "button:",
+      "locator": "//div[./h6[.='Personal Details']]/form/button",
+      "evidence": "Standalone action or unlabelled control"
+    },
+    {
+      "name": "Save",
+      "kind": "button:",
+      "locator": "//div[./h6[.='Custom Fields']]/form/button",
+      "evidence": "Standalone action or unlabelled control"
+    }
+  ],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [
+    {
+      "name": "Personal Details",
+      "kind": "form",
+      "locator": "//div[./h6[.='Personal Details']]/form",
+      "evidence": "Form owned by nearest section heading"
+    },
+    {
+      "name": "Custom Fields",
+      "kind": "form",
+      "locator": "//div[./h6[.='Custom Fields']]/form",
+      "evidence": "Form owned by nearest section heading"
+    }
+  ],
+  "coverage": {
+    "supportedFields": 5,
+    "locatorOnly": 2,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": [
+    "Positional relationship needs review: //form/div[2]",
+    "Use qualified field name: Personal Details / Gender",
+    "Use qualified field name: Custom Fields / Gender"
+  ]
+}

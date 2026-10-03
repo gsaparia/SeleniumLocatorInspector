@@ -1,0 +1,37 @@
+{
+  "title": "",
+  "url": "https://fixture.test/",
+  "fields": [
+    {
+      "key": "Gender",
+      "label": "Gender",
+      "section": "",
+      "kind": "radio",
+      "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' oxd-input-group ')][.//label[.='Gender']]",
+      "options": [
+        {
+          "label": "Male",
+          "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' oxd-input-group ')][.//label[.='Gender']]//label[.='Male']//input"
+        },
+        {
+          "label": "Female",
+          "locator": "//div[contains(concat(' ',normalize-space(@class),' '),' oxd-input-group ')][.//label[.='Gender']]//label[.='Female']//input"
+        }
+      ],
+      "aliases": [],
+      "evidence": "Group caption → option label → associated radio"
+    }
+  ],
+  "elements": [],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [],
+  "coverage": {
+    "supportedFields": 1,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": []
+}

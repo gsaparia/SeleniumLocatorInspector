@@ -1,15 +1,16 @@
 (function () {
     const previous = window.__seleniumLocatorInspector;
-    if (previous?.version === 27) return;
+    if (previous?.version === 34) return;
     // A hooked browser may still have an older inspector installed. Remove
     // its listeners/highlights before replacing it with the new analyser.
     if (previous) {
         previous.stop?.();
         previous.stopRectangleSelection?.();
+        previous.clearLocatorHighlights?.();
     }
 
     window.__seleniumLocatorInspector = {
-        version: 27,
+        version: 34,
         active: false,
         rectangleActive: false,
         previousElement: null,
@@ -25,6 +26,8 @@
         selectionElements: [],
         locatorHighlights: [],
         pickSnapshot: null,
+        selectionGeneration: 0,
+        selectionStatus: {phase:'idle',completed:0,total:0,error:''},
 
         start: function () {
             // The picker is intentionally reusable. Clear the previous
@@ -38,6 +41,7 @@
             // starts. Selection itself takes a new copy if the page changes.
             this.pickSnapshot = this.flattenMultiFrameDOM();
 
+            this.selectionStatus={phase:'picking',completed:0,total:0,error:''};
             this.active = true;
 
             this.moveHandler = this.onMouseMove.bind(this);
@@ -48,6 +52,8 @@
         },
 
         stop: function () {
+            ++this.selectionGeneration;
+            this.selectionStatus={phase:'idle',completed:0,total:0,error:''};
             this.active = false;
 
             if (this.moveHandler) {
@@ -72,6 +78,7 @@
 
             this.pickSnapshot = this.flattenMultiFrameDOM();
 
+            this.selectionStatus={phase:'rectangle',completed:0,total:0,error:''};
             this.rectangleActive = true;
             this.rectangleStart = null;
 
@@ -85,6 +92,8 @@
         },
 
         stopRectangleSelection: function () {
+            ++this.selectionGeneration;
+            this.selectionStatus={phase:'idle',completed:0,total:0,error:''};
             this.rectangleActive = false;
             this.rectangleStart = null;
             this.pickSnapshot = null;
@@ -171,41 +180,37 @@
             this.stopRectangleSelection();
             this.clearHighlight();
 
-            const elements = this.findElementsInRectangle(box);
-            this.selectionElements = elements;
+            // Let the browser process queued WebDriver reads/paint between analyses.
+            this.analyseSelection(this.findElementsInRectangle(box),true);
+        },
 
-            const snapshot = elements.length ? this.flattenMultiFrameDOM() : null;
-            const results = elements.map((element, index) =>
-                this.generateLocators(element, index, snapshot)
-            );
-
-            if (results.length === 0) {
-                this.result = {
-                    isRectangleSelection: true,
-                    rectangleResults: [],
-                    tagName: "",
-                    text: "No elements",
-                    css: "",
-                    xpath: "",
-                    cssUnique: false,
-                    xpathUnique: false,
-                    insideShadowDom: false,
-                    insideIframe: false,
-                    shadowPath: [],
-                    framePath: [],
-                    candidates: [],
-                    stability: { rating: "", positive: [], warnings: [] },
-                    seleniumCode: "",
-                    selectionIndex: -1
-                };
-            } else {
-                this.result = Object.assign({}, results[0], {
-                    isRectangleSelection: true,
-                    rectangleResults: results
-                });
+        analyseSelection: async function (elements, rectangle) {
+            const generation=++this.selectionGeneration;
+            this.selectionElements=elements;
+            this.result=null;window.__seleniumLocatorResult=null;
+            this.selectionStatus={phase:'analysing',completed:0,total:elements.length,error:''};
+            const yieldBrowser=()=>new Promise(resolve=>setTimeout(resolve,0));
+            const results=[],errors=[];
+            try {
+                await yieldBrowser();
+                if(generation!==this.selectionGeneration)return;
+                const snapshot=elements.length?this.flattenMultiFrameDOM():null;
+                for(let index=0;index<elements.length;index++) {
+                    await yieldBrowser();
+                    if(generation!==this.selectionGeneration)return;
+                    try {results.push(this.generateLocators(elements[index],index,snapshot));}
+                    catch(error) {errors.push('Element '+(index+1)+': '+(error.message||String(error)));if(!rectangle)throw error;}
+                    this.selectionStatus.completed=index+1;
+                }
+                if(generation!==this.selectionGeneration)return;
+                if(errors.length&&!results.length)throw new Error(errors[0]);
+                this.result=rectangle?Object.assign({},results[0]||{tagName:'',text:'No elements',candidates:[],selectionIndex:-1},
+                    {isRectangleSelection:true,rectangleResults:results}):results[0];
+                window.__seleniumLocatorResult=this.result;
+                this.selectionStatus={phase:'ready',completed:elements.length,total:elements.length,error:errors.length?errors.length+' element(s) could not be analysed. '+errors.slice(0,3).join('; '):''};
+            } catch(error) {
+                if(generation===this.selectionGeneration)this.selectionStatus={phase:'failed',completed:results.length,total:elements.length,error:error.message||String(error)};
             }
-
-            window.__seleniumLocatorResult = this.result;
         },
 
         updateRectangle: function (x, y) {
@@ -350,11 +355,8 @@
 
             if (!element) return;
 
-            this.selectionElements = [element];
-            this.result = this.generateLocators(element, 0);
-            window.__seleniumLocatorResult = this.result;
-
             this.stop();
+            this.analyseSelection([element],false);
         },
 
         /*
@@ -726,7 +728,7 @@
             let matches = [];
             try {
                 matches = this.findAllOriginal(locator);
-                if (matches.length !== 1) throw new Error("JavaScript requires exactly one locator match; found " + matches.length + ".");
+                if (!matches.length) throw new Error("The locator returned no elements.");
                 const element = matches[0];
                 if (element.nodeType !== Node.ELEMENT_NODE) throw new Error("The locator must match an element.");
                 const win = element.ownerDocument.defaultView;
@@ -756,7 +758,28 @@
                     if (!option || option.disabled || option.parentElement?.disabled) throw new Error("No enabled option has that value.");
                     element.value = option.value; notify(); return element.value;
                 };
-                const getText = () => element.innerText ?? element.textContent ?? "";
+                const getText = () => {
+                    if (/^(INPUT|TEXTAREA)$/.test(element.tagName)) return element.value ?? "";
+                    if (element.tagName === "SELECT") return Array.from(element.selectedOptions || []).map(o => o.textContent || "").join("\n");
+                    const rendered = element.innerText;
+                    if (typeof rendered === "string" && rendered.trim()) return rendered;
+                    const content = element.textContent;
+                    if (typeof content === "string" && content.trim()) return content;
+                    const pieces = [], seen = new Set();
+                    const visit = node => {
+                        if (!node || seen.has(node)) return;
+                        seen.add(node);
+                        if (node.nodeType === Node.TEXT_NODE) { pieces.push(node.nodeValue || ""); return; }
+                        if (/^(SCRIPT|STYLE|NOSCRIPT)$/.test(node.tagName || "")) return;
+                        if (node.tagName === "SLOT" && node.assignedNodes?.().length) {
+                            for (const child of node.assignedNodes()) visit(child);
+                        } else {
+                            for (const child of Array.from(node.shadowRoot?.childNodes || node.childNodes || [])) visit(child);
+                        }
+                    };
+                    visit(element);
+                    return pieces.join("");
+                };
                 const ScriptFunction = win.Function || Function;
                 const run = new ScriptFunction("element","elements","locator","setValue","setChecked","selectValue","getText",
                     "return (async function(){\n" + script + "\n}).call(element);");
@@ -1150,6 +1173,54 @@
             const matches = this.findAllOriginal(locator);
             this.highlightMatches(matches);
             return matches.length;
+        },
+
+        relationshipMatches: function (locator, relative) {
+            const snapshot=this.flattenMultiFrameDOM();
+            const contexts=snapshot.findAllClones(locator),matches=new Set();
+            const isXPath=relative && /^(?:\.?\/|\(|\.\.?$|(?:ancestor|descendant|self|parent|following|preceding|child|attribute)(?:-sibling|-or-self)?::|\*\[@)/.test(relative.trim());
+            const select=context=>{
+                if(!relative)return [context];
+                if(!isXPath)return Array.from(context.querySelectorAll(relative));
+                const result=snapshot.flattenedDoc.evaluate(relative,context,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);
+                return Array.from({length:result.snapshotLength},(_,i)=>result.snapshotItem(i));
+            };
+            // Syntax validation also happens when the parent currently has no matches.
+            if(relative)select(snapshot.flattenedDoc.body);
+            for(const context of contexts)for(const clone of select(context))
+                if((clone===context||context.contains(clone))&&snapshot.map.has(clone))matches.add(clone);
+            return {snapshot,contexts,clones:Array.from(matches),originals:Array.from(matches).map(n=>snapshot.map.get(n))};
+        },
+        highlightRelationship: function (locator, relative) {
+            const result=this.relationshipMatches(locator,relative);
+            this.highlightMatches(result.originals);return result.originals.length;
+        },
+        reviewRelationship: function (locator, relative) {
+            let result;
+            try {result=this.relationshipMatches(locator,relative);}
+            catch(error){this.clearLocatorHighlights();return {valid:false,count:0,error:'Invalid XPath/CSS: '+error.message,css:'',cssNote:''};}
+            if(result.clones.some(n=>n.nodeType!==Node.ELEMENT_NODE)){this.clearLocatorHighlights();return {valid:false,count:0,error:'Locator selects non-element nodes. Select browser elements for page-class operations.',css:'',cssNote:''};}
+            this.highlightMatches(result.originals);
+            if(!result.clones.length)return {valid:true,count:0,error:'',css:'',cssNote:'Valid syntax, but no current matches to verify a CSS alternative.'};
+            const first=result.clones[0],tag=first.tagName.toLowerCase(),candidates=[];
+            const attr=(name,value)=>'['+name+'="'+this.cssAttributeEscape(value)+'"]';
+            for(const name of ['data-testid','data-test','data-qa','id','name','aria-label','title','type','role']) {
+                const value=first.getAttribute(name);
+                if(value&&!this.isProbablyGenerated(value)){candidates.push(tag+attr(name,value));if(name!=='type'&&name!=='role')candidates.push(attr(name,value));}
+            }
+            for(const name of this.stableClasses(first).slice(0,4))candidates.push(tag+'.'+CSS.escape(name),'.'+CSS.escape(name));
+            candidates.push(tag);
+            const expected=new Set(result.clones);
+            const scope=relative?result.contexts:[result.snapshot.flattenedDoc];
+            const equal=css=>{
+                try {const actual=new Set(scope.flatMap(n=>Array.from(n.querySelectorAll(css))).filter(n=>result.snapshot.map.has(n)));
+                    return actual.size===expected.size&&Array.from(actual).every(n=>expected.has(n));} catch{return false;}
+            };
+            const rank=css=>/\[data-(testid|test|qa)=/.test(css)?0:/\[(id|name|aria-label|title)=/.test(css)?1:css.includes('.')?2:css.includes('[')?3:5;
+            const css=Array.from(new Set(candidates)).filter(equal).sort((a,b)=>rank(a)-rank(b)||a.length-b.length)[0]||'';
+            return {valid:true,count:result.clones.length,error:'',css,cssNote:css
+                ? 'CSS matches the same elements in this snapshot'+(relative?' within each parent.':'.')+' Text/ancestor relationships may still make XPath preferable.'
+                : 'Keep XPath: no simple stable CSS selector matched the same elements.'};
         },
 
         testLocator: function (locator, selectionIndex) {

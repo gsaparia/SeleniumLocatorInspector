@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <Version>27.0.0</Version>
+    <Version>34.0.0</Version>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -11,6 +11,9 @@
 
   <ItemGroup>
     <Compile Remove="Verification\**\*.cs" />
+    <EmbeddedResource Include="JavaScript\page-class-analyser.js" LogicalName="SeleniumLocatorInspector.PageClasses.page-class-analyser.js" />
+    <EmbeddedResource Include="PageClasses\page-class-template.txt" LogicalName="SeleniumLocatorInspector.PageClasses.page-class-template.txt" />
+    <EmbeddedResource Include="PageClasses\flattened-resolver.js" LogicalName="SeleniumLocatorInspector.PageClasses.flattened-resolver.js" />
     <EmbeddedResource Include="JavaScript\locator-inspector.js" LogicalName="SeleniumLocatorInspector.JavaScript.locator-inspector.js" />
   </ItemGroup>
 
@@ -33,4 +36,8 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3800.47" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="PageClasses\page-components.txt" LogicalName="SeleniumLocatorInspector.PageClasses.page-components.txt" />
+    <EmbeddedResource Include="PageClasses\page-paging.txt" LogicalName="SeleniumLocatorInspector.PageClasses.page-paging.txt" />
+  </ItemGroup>
 </Project>

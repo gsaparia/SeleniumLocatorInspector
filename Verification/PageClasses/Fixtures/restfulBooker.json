@@ -1,0 +1,85 @@
+{
+  "title": "",
+  "url": "https://example.test/restfulBooker",
+  "fields": [
+    {
+      "key": "Our Rooms",
+      "label": "Our Rooms",
+      "group": "",
+      "section": "",
+      "kind": "date",
+      "locator": "//body[.//h2[.='Our Rooms']]//input",
+      "optionLocator": "",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Nearest single-control container text; date text adapter"
+    }
+  ],
+  "elements": [
+    {
+      "name": "Price",
+      "kind": "div:",
+      "locator": "//div[@aria-label='Price']",
+      "evidence": "Custom/file control: use element property; review interaction"
+    }
+  ],
+  "repeaters": [
+    {
+      "name": "Our Rooms",
+      "kind": "room",
+      "locator": "//section[@id='rooms']//div[contains(concat(' ',normalize-space(@class),' '),' room-card ')]",
+      "keyLocator": ".//h5[contains(concat(' ',normalize-space(@class),' '),' card-title ')]",
+      "keyNormalize": false,
+      "sampleCount": 2,
+      "evidence": "Common child selectors validated across 2 loaded items; exact name template",
+      "children": [
+        {
+          "name": "Price",
+          "locator": ".//div[contains(concat(' ',normalize-space(@class),' '),' fw-bold ')]",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Name",
+          "locator": ".//h5[contains(concat(' ',normalize-space(@class),' '),' card-title ')]",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "Image",
+          "locator": ".//img",
+          "kind": "child",
+          "evidence": "One matching child in every sampled item"
+        },
+        {
+          "name": "BookNowButton",
+          "locator": ".//a[.='Book now']",
+          "kind": "action",
+          "evidence": "One matching child in every sampled item"
+        }
+      ]
+    }
+  ],
+  "menus": [],
+  "pagers": [],
+  "sections": [
+    {
+      "name": "Our Rooms",
+      "kind": "widget",
+      "locator": "//section[@id='rooms']",
+      "children": [],
+      "evidence": "Direct header identifies inner widget; relative metrics validated"
+    }
+  ],
+  "coverage": {
+    "supportedFields": 1,
+    "locatorOnly": 1,
+    "unresolved": 0,
+    "loadedRows": 2
+  },
+  "warnings": [
+    "Dedicated interaction required: Price",
+    "Date pickers and range sliders require a dedicated component interaction; do not assume ordinary text entry covers them."
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "title": "",
+  "url": "https://components.test/",
+  "fields": [
+    {
+      "key": "Employee",
+      "label": "Employee",
+      "group": "",
+      "section": "Filters",
+      "kind": "autocomplete",
+      "locator": "//form[.//label[.='Employee']]//input",
+      "optionLocator": "(//form[.//label[.='Employee']]//input)/ancestor::div[@data-frame][1]//*[@id='people']//*[@role=\"option\"]",
+      "readOnly": false,
+      "options": [],
+      "aliases": [],
+      "evidence": "Associated label; committed autocomplete selection"
+    },
+    {
+      "key": "Role",
+      "label": "Role",
+      "section": "Filters",
+      "kind": "custom-select",
+      "locator": "//div[@id=//label[.='Role']/@for]",
+      "optionLocator": "(//div[@id=//label[.='Role']/@for])/ancestor::div[@data-frame][1]//*[@id='role-list']//*[@role=\"option\"]",
+      "aliases": [],
+      "options": [],
+      "evidence": "Associated label; ARIA listbox choice"
+    }
+  ],
+  "elements": [],
+  "repeaters": [],
+  "menus": [],
+  "pagers": [],
+  "sections": [
+    {
+      "name": "Filters",
+      "kind": "form",
+      "locator": "//form[@aria-label='Filters']",
+      "evidence": "Form owned by nearest section heading"
+    }
+  ],
+  "coverage": {
+    "supportedFields": 2,
+    "locatorOnly": 0,
+    "unresolved": 0,
+    "loadedRows": 0
+  },
+  "warnings": []
+}
