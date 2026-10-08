@@ -1,0 +1,16 @@
+v35 verification
+- Production JavaScript syntax check: passed.
+- Rectangle geometry / within-element yielding / cancellation: 10 checks passed.
+- Selection polling/progress/cancellation regression: 14 checks passed.
+- Production table-cell generation: 35 candidates, synchronous and cooperative outputs identical; timers run during analysis.
+- Locator quality: 85 checks passed.
+- Relationship validation/CSS: 19 checks passed.
+- Page-class DOM: 82 checks passed.
+- Component quality: 165 checks passed.
+- Reusable components/highlighting: 63 checks passed.
+
+Limits:
+- Native Windows app reproduction not run (Linux environment).
+- No C# logic changed; this release changes the embedded analyser and project version.
+- Isolated Chromium integration could not start: environment rejected the browser's socket operation.
+- Real page HTML inspected; geometry tested with table fixtures, not a live Windows browser drag.

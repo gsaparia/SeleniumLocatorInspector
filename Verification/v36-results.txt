@@ -1,0 +1,18 @@
+v36 verification
+- JavaScript syntax check: passed.
+- Shadow-root hit tests, cycles, missing API, exceptions, status caching and per-match yield: 13 checks passed, including old-source nontermination reproduction.
+- Production table-cell analysis with null shadow hit: completed; 35 candidates; synchronous/cooperative outputs identical; timers ran during analysis; caches cleared afterward.
+- Locator quality: 85 checks passed.
+- Rectangle selection / cooperative cancellation: 10 checks passed.
+- Relationship validation / CSS suggestions: 19 checks passed.
+- Selection async regression: 14 checks passed.
+
+v6 source comparison:
+- Both v6 and pre-v35 versions used the same overlap-based rectangle scan.
+- v6 performed a smaller set of locator/container checks and target-only status checks.
+- Later ranking evaluates all matched originals and performs additional relationship/resilience checks.
+- The nonterminating clickability loop existed in v6 too; all-match evaluation increases its exposure.
+
+Limits:
+- Exact Windows/W3Schools UI reproduction has not been run.
+- No C# logic changes; embedded analyser and project version changed.

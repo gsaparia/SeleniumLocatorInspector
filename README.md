@@ -397,3 +397,63 @@ The flattened-first approach and the existing locator strategies are retained. T
 - WinForms application and Windows UI smoke-test project compile successfully. Native Windows UI execution and reproduction against your particular WebDriver/page were not available in this Linux environment.
 
 Run `dotnet run --project Verification/InspectorCommands/InspectorCommands.csproj` for blocked-driver tests. Run the jsdom checks with `NODE_PATH` pointing to jsdom@26. Windows native UI smoke tests remain in `Verification/WindowsUi`.
+
+
+## v35 – rectangle selection of table cells
+
+Rectangle selection previously included every intersecting ancestor, so a rectangle
+around a cell could analyse the row, table, example panel and large page containers.
+It now retains fully enclosed elements and partially enclosed leaf targets, excluding
+partially enclosed ancestors. Small edge overlaps below 10% of the smaller rectangle
+area are ignored. Tight rectangles inside a cell still select that cell; fully enclosed
+containers remain available for analysis. Bounds are read once rather than again
+while sorting.
+
+The v34 fix yielded only between elements. v35 also yields during candidate generation,
+parent/container analysis, candidate ranking and resilience checks, using approximately
+8 ms work slices. The same algorithms and complete candidate set are retained.
+A single native DOM or XPath operation can exceed that slice; it cannot be interrupted
+mid-operation. Flattening remains the first step. WebDriver polling stays off the UI
+thread and uses the existing serialized command queue. Starting another selection
+cancels the previous generator and prevents stale results from being published.
+
+New tests (install jsdom@26 and set NODE_PATH to its node_modules folder):
+- `node Verification/rectangle-selection.cjs` – geometry, within-element yielding and cancellation.
+- `node Verification/selection-production.cjs` – full production table-cell generation and identical synchronous/cooperative candidates.
+
+Windows UI reproduction has not been run in the Linux build environment.
+
+
+## v36 – v6 comparison and nonterminating clickability checks
+
+Comparing v6 with v35 shows that the rectangle gesture itself used the same
+overlap scan. v6 ran direct/text/attribute candidates and a smaller five-level
+container analysis; it checked visibility/clickability of the selected target.
+The modern analyser additionally explores deeper relationships, checks all
+matching originals while ranking each candidate, and performs clone resilience
+checks. Reverting only the rectangle gesture would not remove that workload.
+
+A confirmed nontermination defect was found in `isClickable`: the loop assigned
+`shadowRoot.elementFromPoint(...) || hit` back to `hit`. When the root returned
+null or the host itself, the loop never advanced. This defect was also present
+in v6, but modern all-match evaluation exercises it on more page elements.
+The Windows/W3Schools-specific trigger has not been confirmed in this environment.
+
+v36 reuses a guarded deep hit-test traversal for clickability and picking. It
+stops on null, self, revisited hosts, unavailable APIs or exceptions, while still
+descending through valid nested shadow roots. Candidate ranking now yields inside
+the per-candidate and per-match evaluation loops. Visibility/clickability results
+are cached per original element during one analysis and cleared at completion or
+cancellation. Flattened DOM and all existing locator strategies are retained.
+
+Verification:
+- `node Verification/shadow-hit-test.cjs`
+- Optional old-source reproduction: append the path to a v35 `locator-inspector.js`.
+  The test runs that source in a disposable subprocess and asserts a hard timeout
+  after entering the defective hit-test loop.
+- `node Verification/selection-production.cjs` now exercises full production
+  table-cell generation with a shadow overlay returning null, rather than stubbing
+  out clickability. Synchronous/cooperative outputs must match and status caches
+  must be released.
+
+Native Windows application reproduction remains unverified.

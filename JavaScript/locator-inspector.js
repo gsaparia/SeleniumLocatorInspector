@@ -1,6 +1,6 @@
 (function () {
     const previous = window.__seleniumLocatorInspector;
-    if (previous?.version === 34) return;
+    if (previous?.version === 36) return;
     // A hooked browser may still have an older inspector installed. Remove
     // its listeners/highlights before replacing it with the new analyser.
     if (previous) {
@@ -10,7 +10,7 @@
     }
 
     window.__seleniumLocatorInspector = {
-        version: 34,
+        version: 36,
         active: false,
         rectangleActive: false,
         previousElement: null,
@@ -198,7 +198,20 @@
                 for(let index=0;index<elements.length;index++) {
                     await yieldBrowser();
                     if(generation!==this.selectionGeneration)return;
-                    try {results.push(this.generateLocators(elements[index],index,snapshot));}
+                    try {
+                        const steps=this.generateLocatorsSteps(elements[index],index,snapshot);
+                        let step, deadline=performance.now()+8;
+                        try {
+                            do {
+                                if(generation!==this.selectionGeneration)return;
+                                step=steps.next();
+                                if(!step.done && performance.now()>=deadline) {
+                                    await yieldBrowser();deadline=performance.now()+8;
+                                }
+                            } while(!step.done);
+                            results.push(step.value);
+                        } finally {steps.return();}
+                    }
                     catch(error) {errors.push('Element '+(index+1)+': '+(error.message||String(error)));if(!rectangle)throw error;}
                     this.selectionStatus.completed=index+1;
                 }
@@ -276,15 +289,26 @@
                     rect.bottom > box.top;
 
                 if (intersects) {
-                    result.push(element);
+                    result.push({element,rect,enclosed:rect.left>=box.left && rect.right<=box.right &&
+                        rect.top>=box.top && rect.bottom<=box.bottom});
                 }
             }
 
-            return result.sort((a, b) => {
-                const ra = a.getBoundingClientRect();
-                const rb = b.getBoundingClientRect();
-                return (ra.top - rb.top) || (ra.left - rb.left);
-            });
+            const enclosingPartialAncestors = new Set();
+            for (const entry of result) {
+                for(let parent=entry.element.parentElement || entry.element.getRootNode().host;
+                    parent;parent=parent.parentElement || parent.getRootNode().host)
+                    enclosingPartialAncestors.add(parent);
+            }
+            // A small cell rectangle must not select the entire table, example,
+            // main panel and page. Keep enclosed elements, plus partially enclosed
+            // leaf targets at the edges. Fully enclosed containers stay inspectable.
+            return result.filter(entry=>entry.enclosed || (!enclosingPartialAncestors.has(entry.element) &&
+                    (Math.min(entry.rect.right,box.right)-Math.max(entry.rect.left,box.left))*
+                    (Math.min(entry.rect.bottom,box.bottom)-Math.max(entry.rect.top,box.top)) >=
+                    Math.min(entry.rect.width*entry.rect.height,box.width*box.height)*0.1))
+                .sort((a,b)=>(a.rect.top-b.rect.top)||(a.rect.left-b.rect.left))
+                .map(entry=>entry.element);
         },
 
         getAllElementsDeep: function () {
@@ -365,22 +389,19 @@
          * calling elementFromPoint() against the open shadow root lets us
          * continue into the shadow tree.
          */
-        deepElementFromPoint: function (x, y) {
-            let root = document;
-            let element = root.elementFromPoint(x, y);
-
-            while (element) {
-                if (element.shadowRoot) {
-                    const inside = element.shadowRoot.elementFromPoint(x, y);
-                    if (!inside || inside === element) break;
-
-                    root = element.shadowRoot;
-                    element = inside;
-                } else {
-                    break;
-                }
+        deepElementFromPoint: function (x, y, root = document) {
+            let element;
+            try {element=root.elementFromPoint(x,y);} catch {return null;}
+            const visited = new Set();
+            while(element && element.shadowRoot && !visited.has(element)) {
+                visited.add(element);
+                let inside;
+                try {inside=element.shadowRoot.elementFromPoint?.(x,y);} catch {break;}
+                // A shadow hit test can return null or the host itself. Neither
+                // advances the traversal. Never spin on the unchanged host.
+                if(!inside || inside===element || visited.has(inside))break;
+                element=inside;
             }
-
             return element;
         },
 
@@ -402,13 +423,26 @@
             }
         },
 
+        drainAnalysisSteps: function (steps) {
+            let step;
+            do {step=steps.next();} while(!step.done);
+            return step.value;
+        },
+
         generateLocators: function (element, selectionIndex, snapshot = this.flattenMultiFrameDOM()) {
+            return this.drainAnalysisSteps(this.generateLocatorsSteps(element, selectionIndex, snapshot));
+        },
+
+        generateLocatorsSteps: function* (element, selectionIndex, snapshot = this.flattenMultiFrameDOM()) {
+            yield;
             const selectedClone = snapshot.findClone(element);
             if (!selectedClone)
                 throw new Error("The selected element is no longer present in the accessible flattened DOM.");
 
             this._analysisSnapshot = snapshot;
             this._analysisQueryCache = new Map();
+            this._analysisVisibilityCache = new WeakMap();
+            this._analysisClickabilityCache = new WeakMap();
             try {
                 const fallbackCss = this.bestCss(selectedClone);
                 const fallbackXPath = this.bestXPath(selectedClone);
@@ -416,7 +450,7 @@
                 const framePath = this.getFramePath(element);
 
                 const initial = this.buildCandidates(selectedClone);
-                const detailedCandidates = this.rankCandidates(this.buildDetailedCandidates(selectedClone, initial, snapshot), selectedClone, snapshot);
+                const detailedCandidates = yield* this.rankCandidatesSteps((yield* this.buildDetailedCandidatesSteps(selectedClone, initial, snapshot)), selectedClone, snapshot);
                 const candidates = detailedCandidates;
                 const best = candidates.find(c => c.unique);
                 const css = candidates.find(c => c.unique && c.type === "CSS")?.value || fallbackCss;
@@ -443,8 +477,12 @@
                     selectionIndex: Number.isInteger(selectionIndex) ? selectionIndex : -1
                 };
             } finally {
-                this._analysisSnapshot = null;
-                this._analysisQueryCache = null;
+                if(this._analysisSnapshot===snapshot) {
+                    this._analysisSnapshot = null;
+                    this._analysisQueryCache = null;
+                    this._analysisVisibilityCache = null;
+                    this._analysisClickabilityCache = null;
+                }
             }
         },
 
@@ -472,7 +510,7 @@
                 /^(?:[$£€]\s*[\d,.]+|[\d,.]+\s*(?:%|USD|AUD|EUR)|\d+[/-]\d+[/-]\d+|\d+:\d+(?::\d+)?)$/i.test(text)) return null;
             const original = this._analysisSnapshot?.map.get(node);
             const selected = this._analysisSnapshot?.map.get(target);
-            if (original && !this.isVisible(original)) return null;
+            if (original && !this.analysisVisible(original)) return null;
             const sameRoot = original && selected && original.getRootNode() === selected.getRootNode();
             if (sameRoot && node.tagName === "LABEL" && /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName) &&
                 ((original.control && original.control !== selected) ||
@@ -489,11 +527,17 @@
         },
 
         addMeaningfulRelationships: function (element, add, query) {
+            return this.drainAnalysisSteps(this.addMeaningfulRelationshipsSteps(element, add, query));
+        },
+
+        addMeaningfulRelationshipsSteps: function* (element, add, query) {
+            yield;
             const parts = this.targetParts(element);
             const local = [];
             let generated = 0;
             for (let parent = element.parentElement, depth = 1; parent && depth <= 14;
                 parent = parent.parentElement, depth++) {
+                yield;
                 if (!this._analysisSnapshot.map.has(parent) || /^(BODY|HTML)$/.test(parent.tagName)) break;
                 const markers = Array.from(parent.querySelectorAll("label,legend,h1,h2,h3,h4,h5,h6,div,span,strong,td,th,p"))
                     .filter(n => n !== element && !n.contains(element) && !element.contains(n))
@@ -506,12 +550,15 @@
                 // class must not prevent a shorter label-based relationship.
                 anchors.push({ value: "//" + parent.tagName.toLowerCase(), score: 65, reason: "container tag" });
                 for (const marker of markers) {
+                yield;
                     const condition = "[.//" + marker.node.tagName.toLowerCase() + "[" + this.normalizedTextPredicate(marker.text, marker.node) + "]]";
                     for (const anchor of anchors) {
+                yield;
                         const container = anchor.value + condition;
                         const containers = query(container);
                         if (!containers.includes(parent)) continue;
                         for (const part of parts) {
+                yield;
                             if (generated >= 100) break;
                             const value = container + "//" + part.value;
                             const matches = query(value);
@@ -538,8 +585,11 @@
                 }
                 // Disambiguate repeated local fields using a named outer section.
                 for (const field of local.filter(f => f.parent !== parent && parent.contains(f.parent))) {
+                yield;
                     for (const marker of markers.filter(m => /^H[1-6]$|^(LEGEND|LABEL)$/.test(m.node.tagName) && m.text !== field.marker.text)) {
+                yield;
                         for (const anchor of anchors.slice(0, 3)) {
+                yield;
                             if (generated >= 140) break;
                             const outer = anchor.value + "[.//" + marker.node.tagName.toLowerCase() + "[" + this.normalizedTextPredicate(marker.text, marker.node) + "]]";
                             const value = outer + field.value;
@@ -582,16 +632,44 @@
             return "Flattened resolver";
         },
 
+        analysisVisible: function (element) {
+            if(!element)return false;
+            const cache=this._analysisVisibilityCache;
+            if(cache?.has(element))return cache.get(element);
+            const value=this.isVisible(element);
+            cache?.set(element,value);
+            return value;
+        },
+
+        analysisClickable: function (element) {
+            if(!element)return false;
+            const cache=this._analysisClickabilityCache;
+            if(cache?.has(element))return cache.get(element);
+            const value=this.isClickable(element);
+            cache?.set(element,value);
+            return value;
+        },
+
         evaluateCandidate: function (candidate, element, snapshot) {
+            return this.drainAnalysisSteps(this.evaluateCandidateSteps(candidate,element,snapshot));
+        },
+
+        evaluateCandidateSteps: function* (candidate, element, snapshot) {
             const matches = this.matchingClones(candidate.value, snapshot);
-            const originals = matches.map(n => snapshot.map.get(n)).filter(Boolean);
             candidate.matches = matches.length;
             candidate.selectedTargetMatched = matches.includes(element);
             candidate.unique = candidate.selectedTargetMatched && matches.length === 1;
-            candidate.visible = originals.some(n => this.isVisible(n));
-            candidate.clickable = originals.some(n => this.isClickable(n));
-            candidate.visibleMatches = originals.filter(n => this.isVisible(n)).length;
-            candidate.clickableMatches = originals.filter(n => this.isClickable(n)).length;
+            let visible=0,clickable=0;
+            for(const clone of matches) {
+                yield;
+                const original=snapshot.map.get(clone);
+                if(this.analysisVisible(original))visible++;
+                if(this.analysisClickable(original))clickable++;
+            }
+            candidate.visible = visible>0;
+            candidate.clickable = clickable>0;
+            candidate.visibleMatches = visible;
+            candidate.clickableMatches = clickable;
             const risks = [];
             const value = candidate.value;
             let identity = /data-(?:testid|test-id|cy|qa)/.test(value) ? 38 :
@@ -840,12 +918,21 @@
         },
 
         rankCandidates: function (candidates, element, snapshot) {
+            return this.drainAnalysisSteps(this.rankCandidatesSteps(candidates, element, snapshot));
+        },
+
+        rankCandidatesSteps: function* (candidates, element, snapshot) {
+            yield;
             for (const candidate of candidates) {
+                yield;
                 this.simplifyTextLocator(candidate, snapshot);
                 if (candidate.containerLocator)
                     candidate.containerLocator = this.simplifyTextLocator({type:"XPATH",value:candidate.containerLocator}, snapshot).value;
             }
-            for (const candidate of candidates) this.evaluateCandidate(candidate, element, snapshot);
+            for (const candidate of candidates) {
+                yield;
+                yield* this.evaluateCandidateSteps(candidate,element,snapshot);
+            }
             const compare = (a,b) => Number(b.unique) - Number(a.unique) || b.score - a.score ||
                 Number(/data-(?:testid|test-id|cy|qa)/.test(b.value)) - Number(/data-(?:testid|test-id|cy|qa)/.test(a.value)) ||
                 Number(!!b.repeaterAttribute) - Number(!!a.repeaterAttribute) || a.value.length - b.value.length;
@@ -853,7 +940,7 @@
             candidates = this.deduplicateCandidates(candidates);
             candidates = this.keepShortestContainerTargets(candidates);
             const shortlist = candidates.filter(c => c.unique && !/data-frame/.test(c.value)).slice(0, 12);
-            this.testCandidateResilience(shortlist, element, snapshot);
+            yield* this.testCandidateResilienceSteps(shortlist, element, snapshot);
             candidates.sort(compare);
             const best = candidates.find(c => c.unique);
             const css = candidates.find(c => c.unique && c.type === "CSS");
@@ -866,22 +953,28 @@
         },
 
         testCandidateResilience: function (candidates, element, snapshot) {
+            return this.drainAnalysisSteps(this.testCandidateResilienceSteps(candidates, element, snapshot));
+        },
+
+        testCandidateResilienceSteps: function* (candidates, element, snapshot) {
+            yield;
             if (!candidates.length) return;
             const outcomes = new Map(candidates.map(c => [c, []]));
             const mutations = [
-                ["extra classes", (doc, target) => {
+                ["extra classes", function* (doc, target) {
                     for (const n of doc.querySelectorAll("[class]")) n.classList.add("inspector-neutral-class");
                 }],
-                ["sibling reorder", (doc, target) => {
+                ["sibling reorder", function* (doc, target) {
                     for (const p of Array.from(doc.querySelectorAll("*")))
                         if (p.children.length > 1) for (const child of Array.from(p.children).reverse()) p.appendChild(child);
                 }],
-                ["neutral wrapper", (doc, target) => {
+                ["neutral wrapper", function* (doc, target) {
                     const wrapper = doc.createElement("inspector-neutral-wrapper");
                     target.parentNode.insertBefore(wrapper, target); wrapper.appendChild(target);
                 }],
-                ["transient attributes", (doc, target) => {
+                ["transient attributes", function* (doc, target) {
                     for (const n of doc.querySelectorAll("*")) {
+                yield;
                         if (this.isProbablyGenerated(n.id)) n.removeAttribute("id");
                         for (const cls of Array.from(n.classList))
                             if (this.isProbablyGenerated(cls) || /^(?:active|selected|focused|is-loading)$/.test(cls)) n.classList.remove(cls);
@@ -890,6 +983,7 @@
             ];
             const targetIndex = Array.from(snapshot.flattenedDoc.body.querySelectorAll("*")).indexOf(element);
             for (const [name, mutate] of mutations) {
+                yield;
                 const doc = document.implementation.createHTMLDocument("Locator resilience copy");
                 const copied = snapshot.flattenedDoc.body.cloneNode(true);
                 doc.documentElement.replaceChild(doc.adoptNode(copied), doc.body);
@@ -897,8 +991,9 @@
                 const clones = Array.from(doc.body.querySelectorAll("*"));
                 const target = clones[targetIndex];
                 if (!target) continue;
-                mutate(doc, target);
+                yield* mutate.call(this,doc, target);
                 for (const candidate of candidates) {
+                yield;
                     let found = [];
                     try {
                         if (candidate.type === "CSS") found = Array.from(doc.querySelectorAll(candidate.value));
@@ -911,6 +1006,7 @@
                 }
             }
             for (const candidate of candidates) {
+                yield;
                 const results = outcomes.get(candidate);
                 const passed = results.filter(r => r.passed).length;
                 candidate.resilience = passed + "/" + results.length + " clone checks passed";
@@ -1138,15 +1234,14 @@
         },
 
         isClickable: function (element) {
-            if (!this.isVisible(element) || element.matches(":disabled") || element.closest("[inert]") || element.getAttribute("aria-disabled") === "true") return false;
+            if (!this.analysisVisible(element) || element.matches(":disabled") || element.closest("[inert]") || element.getAttribute("aria-disabled") === "true") return false;
             const win = element.ownerDocument.defaultView;
             if (win.getComputedStyle(element).pointerEvents === "none") return false;
             const rect = element.getBoundingClientRect();
             const x = Math.max(0, Math.min(win.innerWidth - 1, rect.left + rect.width / 2));
             const y = Math.max(0, Math.min(win.innerHeight - 1, rect.top + rect.height / 2));
             if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= win.innerWidth || rect.top >= win.innerHeight) return false;
-            let hit = element.ownerDocument.elementFromPoint(x, y);
-            while (hit && hit.shadowRoot) hit = hit.shadowRoot.elementFromPoint(x, y) || hit;
+            const hit = this.deepElementFromPoint(x,y,element.ownerDocument);
             return !!hit && (element === hit || element.contains(hit) || hit.contains(element));
         },
 
@@ -1385,6 +1480,11 @@
         },
 
         addDeepParentCandidates: function (element, add, query) {
+            return this.drainAnalysisSteps(this.addDeepParentCandidatesSteps(element, add, query));
+        },
+
+        addDeepParentCandidatesSteps: function* (element, add, query) {
+            yield;
             const targetOptions = this.relationshipNodeOptions(element).slice(0, 10);
             const checked = new Map();
             const uniqueForTarget = value => {
@@ -1410,12 +1510,15 @@
             let fallback = null;
             const collected = [];
             while (ancestor && ancestor.nodeType === Node.ELEMENT_NODE && depth < 18) {
+                yield;
                     depth++;
                     route.unshift(ancestor);
                     const anchors = this.relationshipAnchors(ancestor, element, query).slice(0, 18);
                     const found = [];
                     for (const anchor of anchors) {
+                yield;
                         for (const target of targetOptions) {
+                yield;
                             const xpath = anchor.xpath + "//" + target.xpath;
                             if (uniqueForTarget(xpath)) found.push({ type: "XPATH", value: xpath,
                                 score: Math.min(91, (anchor.score + target.score) / 2 + 7 - depth),
@@ -1436,7 +1539,9 @@
                         if (found.length >= 4) break;
                         const parts = route.slice(1).map(tagOf);
                         for (let i = parts.length - 2; i >= 0 && found.length < 4; i--) {
+                yield;
                             for (const option of this.relationshipNodeOptions(route[i + 1]).slice(1, 4)) {
+                yield;
                                 const refined = parts.slice();
                                 refined[i] = option.xpath;
                                 const value = anchor.xpath + "/" + refined.join("/");
@@ -1481,14 +1586,21 @@
         },
 
         addContainerCandidates: function (element, add) {
+            return this.drainAnalysisSteps(this.addContainerCandidatesSteps(element, add));
+        },
+
+        addContainerCandidatesSteps: function* (element, add) {
+            yield;
             const tag = element.tagName.toLowerCase();
             const ownText = (element.innerText || element.textContent || "").trim().replace(/\s+/g, " ");
             const anchors = [];
             for (let parent = element.parentElement, depth = 0; parent && depth < 5; parent = parent.parentElement, depth++) {
+                yield;
                 if (["body", "html"].includes(parent.tagName.toLowerCase())) break;
                 const ptag = parent.tagName.toLowerCase();
                 let parentBase = null;
                 for (const attr of ["data-testid", "data-test-id", "data-cy", "id", "aria-label", "role"]) {
+                yield;
                     const value = parent.getAttribute(attr);
                     if (value && !this.isProbablyGenerated(value)) {
                         parentBase = ".//" + ptag + "[@" + attr + "=" + this.xpathLiteral(value) + "]";
@@ -1509,6 +1621,7 @@
             }
             const targetParts = [];
             for (const attr of ["data-testid", "data-test-id", "data-cy", "name", "aria-label", "type", "placeholder", "role"]) {
+                yield;
                 const value = element.getAttribute(attr);
                 if (value && !this.isProbablyGenerated(value)) targetParts.push({ part: tag + "[@" + attr + "=" + this.xpathLiteral(value) + "]", score: 90 });
             }
@@ -1516,6 +1629,7 @@
                 targetParts.push({ part: tag + "[normalize-space(.)=" + this.xpathLiteral(ownText) + "]", score: 86 });
             targetParts.push({ part: tag, score: 62 });
             for (const anchor of anchors.slice(0, 12)) {
+                yield;
                 for (const target of targetParts.slice(0, 6))
                     add("Reusable container", "XPATH", anchor.base + "//" + target.part, Math.min(anchor.score, target.score), anchor.reason + "; scoped to the target within that container.");
             }
@@ -1525,6 +1639,7 @@
                 if (label) {
                     const labelText = (label.innerText || label.textContent || "").trim().replace(/\s+/g, " ");
                     for (let parent = element.parentElement, depth = 0; parent && depth < 4; parent = parent.parentElement, depth++) {
+                yield;
                         if (!labelText || parent.tagName.toLowerCase() === "body") break;
                         if (parent.contains(label))
                             add("Reusable field container", "XPATH", ".//" + parent.tagName.toLowerCase() + "[.//label[normalize-space(.)=" + this.xpathLiteral(labelText) + "]]//" + tag, 92, "Finds the field inside the container holding its associated label.");
@@ -1534,6 +1649,11 @@
         },
 
         addReusableSectionCandidates: function (element, add, query) {
+            return this.drainAnalysisSteps(this.addReusableSectionCandidatesSteps(element, add, query));
+        },
+
+        addReusableSectionCandidatesSteps: function* (element, add, query) {
+            yield;
             const tag = element.tagName.toLowerCase();
             const targetParts = [];
             const targetText = (element.innerText || element.textContent || "").trim().replace(/\s+/g, " ");
@@ -1541,6 +1661,7 @@
                 targetParts.push({ value: tag + "[normalize-space(.)=" + this.xpathLiteral(targetText) + "]", score: 89,
                     reason: "target text" });
             for (const attr of ["data-testid", "data-test-id", "data-cy", "aria-label", "name", "value", "placeholder", "href", "type"]) {
+                yield;
                 const value = element.getAttribute(attr);
                 if (value && value.length <= 100 && !this.isProbablyGenerated(value))
                     targetParts.push({ value: tag + "[@" + attr + "=" + this.xpathLiteral(value) + "]",
@@ -1551,11 +1672,13 @@
             for (let parent = this.parentForLocator(element), depth = 1;
                 parent && parent.nodeType === Node.ELEMENT_NODE && depth <= 14;
                 parent = this.parentForLocator(parent), depth++) {
+                yield;
                 const parentTag = parent.tagName.toLowerCase();
                 if (parentTag === "body" || parentTag === "html") break;
                 const classes = this.stableClasses(parent);
                 const anchors = [];
                 for (const cls of classes.slice(0, 2)) {
+                yield;
                     const classPredicate = parent.getAttribute("class") === cls
                         ? "@class=" + this.xpathLiteral(cls)
                         : "contains(concat(' ',normalize-space(@class),' ')," + this.xpathLiteral(" " + cls + " ") + ")";
@@ -1563,6 +1686,7 @@
                         score: 87 - depth, reason: "container class " + cls });
                 }
                 for (const attr of ["data-testid", "data-test-id", "data-cy", "aria-label", "role"]) {
+                yield;
                     const value = parent.getAttribute(attr);
                     if (value && value.length <= 100 && !this.isProbablyGenerated(value))
                         anchors.push({ value: "//" + parentTag + "[@" + attr + "=" + this.xpathLiteral(value) + "]",
@@ -1583,13 +1707,16 @@
                     .slice(0, 2);
 
                 for (const anchor of anchors) {
+                yield;
                     const scoped = [anchor];
                     for (const marker of markers)
                         scoped.push({ value: anchor.value + "[.//" + marker.tag +
                             "[normalize-space(.)=" + this.xpathLiteral(marker.text) + "]]",
                             score: anchor.score + 5, reason: anchor.reason + " and nearby " + marker.tag + " text" });
                     for (const container of scoped) {
+                yield;
                         for (const target of targetParts) {
+                yield;
                             const locator = container.value + "//" + target.value;
                             let matches;
                             try { matches = query(locator); } catch { continue; }
@@ -1605,9 +1732,15 @@
         },
 
         addChildTextCandidates: function (element, add, query) {
+            return this.drainAnalysisSteps(this.addChildTextCandidatesSteps(element, add, query));
+        },
+
+        addChildTextCandidatesSteps: function* (element, add, query) {
+            yield;
             const tag = element.tagName.toLowerCase();
             const bases = [];
             for (const attr of ["role", "data-testid", "data-test-id", "data-cy", "part", "aria-label"]) {
+                yield;
                 const value = element.getAttribute(attr);
                 if (value && value.length <= 100 && !this.isProbablyGenerated(value))
                     bases.push({ value: "//" + tag + "[@" + attr + "=" + this.xpathLiteral(value) + "]",
@@ -1630,6 +1763,7 @@
             if (element.shadowRoot) pending.push(...Array.from(element.shadowRoot.childNodes).reverse());
             let visited = 0;
             while (pending.length && visited++ < 500 && clues.length < 8) {
+                yield;
                 const node = pending.pop();
                 if (node.nodeType === Node.TEXT_NODE) { note(node.nodeValue); continue; }
                 if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) continue;
@@ -1640,12 +1774,15 @@
             }
 
             for (const clue of clues) {
+                yield;
                 const literal = this.xpathLiteral(clue);
                 for (const base of bases.slice(0, 6)) {
+                yield;
                     // The descendant may be a span, a text node directly in a
                     // child, or an open shadow-root child in the flattened DOM.
                     for (const predicate of [".//*[normalize-space(.)=" + literal + "]",
                         ".//text()[normalize-space(.)=" + literal + "]"]) {
+                yield;
                         const locator = base.value + "[" + predicate + "]";
                         let matches;
                         try { matches = query(locator); } catch { continue; }
@@ -1734,6 +1871,11 @@
         },
 
         addCompositeCandidates: function (element, add, query) {
+            return this.drainAnalysisSteps(this.addCompositeCandidatesSteps(element, add, query));
+        },
+
+        addCompositeCandidatesSteps: function* (element, add, query) {
+            yield;
             const tag = element.tagName.toLowerCase();
             let produced = 0;
             const attrs = ["data-testid", "data-test-id", "data-cy", "name", "aria-label",
@@ -1742,7 +1884,9 @@
                 .filter(item => item.value && item.value.length <= 100 && !this.isProbablyGenerated(item.value))
                 .slice(0, 8);
             for (let i = 0; i < attrs.length; i++) {
+                yield;
                 for (let j = i + 1; j < attrs.length; j++) {
+                yield;
                     if (produced >= 12) return;
                     const a = attrs[i], b = attrs[j];
                     const css = tag + "[" + a.name + '="' + this.cssAttributeEscape(a.value) + '"]' +
@@ -1750,6 +1894,7 @@
                     const xpath = "//" + tag + "[@" + a.name + "=" + this.xpathLiteral(a.value) +
                         " and @" + b.name + "=" + this.xpathLiteral(b.value) + "]";
                     for (const [type, locator] of [["CSS", css], ["XPATH", xpath]]) {
+                yield;
                         try {
                             const matches = query(locator);
                             if (matches.length === 1 && matches[0] === element) {
@@ -1764,12 +1909,18 @@
         },
 
         addAssociatedLabelCandidates: function (element, add, query) {
+            return this.drainAnalysisSteps(this.addAssociatedLabelCandidatesSteps(element, add, query));
+        },
+
+        addAssociatedLabelCandidatesSteps: function* (element, add, query) {
+            yield;
             const tag = element.tagName.toLowerCase();
             if (!["input", "textarea", "select"].includes(tag)) return;
             const doc = element.ownerDocument;
             if (element.id) {
                 for (const label of Array.from(doc.querySelectorAll("label[for]")).filter(node =>
                     node.getAttribute("for") === element.id && this.sameOriginalRoot(node, element))) {
+                yield;
                     const text = (label.textContent || "").trim().replace(/\s+/g, " ");
                     if (!text || text.length > 80) continue;
                     const xpath = "//" + tag + "[@id=//label[normalize-space(.)=" +
@@ -1783,7 +1934,9 @@
             }
             const ids = (element.getAttribute("aria-labelledby") || "").trim().split(/\s+/).filter(Boolean);
             for (const id of ids.slice(0, 4)) {
+                yield;
                 for (const reference of Array.from(doc.querySelectorAll("[id]")).filter(node => node.id === id && this.sameOriginalRoot(node, element))) {
+                yield;
                     const text = this.meaningfulText(reference);
                     if (!text) continue;
                     const ref = "//" + reference.tagName.toLowerCase() +
@@ -1801,20 +1954,29 @@
         },
 
         addNearestContainerCandidates: function (element, add, query) {
+            return this.drainAnalysisSteps(this.addNearestContainerCandidatesSteps(element, add, query));
+        },
+
+        addNearestContainerCandidatesSteps: function* (element, add, query) {
+            yield;
             const parts = this.targetParts(element);
             let produced = 0;
             for (let parent = element.parentElement, depth = 1; parent && depth <= 10;
                 parent = parent.parentElement, depth++) {
+                yield;
                 if (produced >= 20) break;
                 if (!this._analysisSnapshot.map.has(parent) || /^(BODY|HTML)$/.test(parent.tagName)) break;
                 let parentResults = 0;
                 const markers = this.nearestTextMarkers(parent, element,
                     "div,label,legend,h1,h2,h3,h4,h5,h6,span,strong,p,td,th", 2);
                 for (const marker of markers) {
+                yield;
                     const mt = marker.node.tagName.toLowerCase();
                     const condition = "[.//" + mt + "[normalize-space(.)=" + this.xpathLiteral(marker.text) + "]]";
                     for (const anchor of this.stableContainerAnchors(parent)) {
+                yield;
                         for (const part of parts) {
+                yield;
                             if (parentResults >= 4) break;
                             const xpath = anchor.value + condition + "//" + part.value;
                             try {
@@ -1835,9 +1997,15 @@
         },
 
         addSiblingTextCandidates: function (element, add, query) {
+            return this.drainAnalysisSteps(this.addSiblingTextCandidatesSteps(element, add, query));
+        },
+
+        addSiblingTextCandidatesSteps: function* (element, add, query) {
+            yield;
             const tag = element.tagName.toLowerCase();
             for (let wrapper = element, depth = 0; wrapper && depth < 5;
                 wrapper = wrapper.parentElement, depth++) {
+                yield;
                 const preceding = wrapper.previousElementSibling;
                 if (!preceding) continue;
                 const marker = this.meaningfulText(preceding) ? preceding :
@@ -1887,9 +2055,15 @@
         },
 
         addRepeatedItemCandidates: function (element, add, query) {
+            return this.drainAnalysisSteps(this.addRepeatedItemCandidatesSteps(element, add, query));
+        },
+
+        addRepeatedItemCandidatesSteps: function* (element, add, query) {
+            yield;
             let produced = 0;
             for (let parent = element, depth = 0; parent && depth <= 10;
                 parent = parent.parentElement, depth++) {
+                yield;
                 if (produced >= 36) break;
                 if (!this._analysisSnapshot.map.has(parent) || /^(BODY|HTML)$/.test(parent.tagName)) break;
                 const tag = parent.tagName.toLowerCase();
@@ -1928,7 +2102,9 @@
                         distance: this.textDistance(m.node, element, parent)}))
                     .sort((a,b) => b.score - a.score || a.distance - b.distance).slice(0, 4);
                 for (const marker of markers) {
+                yield;
                     for (const anchor of anchors) {
+                yield;
                         if (produced >= 36) break;
                         const container = anchor.value + "[.//" + marker.node.tagName.toLowerCase() +
                             "[" + this.normalizedTextPredicate(marker.text, marker.node) + "]]";
@@ -1939,6 +2115,7 @@
                         const parts = parent === element ? [{ value: "", basis: "selected item container" }] :
                             this.repeatedChildParts(element);
                         for (const part of parts) {
+                yield;
                             if (produced >= 36) break;
                             const value = container + (part.value ? "//" + part.value : "");
                             const matches = query(value);
@@ -1957,6 +2134,11 @@
         },
 
         addRelationalCssCandidates: function (element, add, query) {
+            return this.drainAnalysisSteps(this.addRelationalCssCandidatesSteps(element, add, query));
+        },
+
+        addRelationalCssCandidatesSteps: function* (element, add, query) {
+            yield;
             const tag = element.tagName.toLowerCase();
             let produced = 0;
             const targetName = element.getAttribute("name");
@@ -1964,6 +2146,7 @@
                 ? '[name="' + this.cssAttributeEscape(targetName) + '"]' : "");
             for (let parent = element.parentElement, depth = 1; parent && depth <= 5;
                 parent = parent.parentElement, depth++) {
+                yield;
                 if (produced >= 8) break;
                 if (!this._analysisSnapshot.map.has(parent) || /^(BODY|HTML)$/.test(parent.tagName)) break;
                 const cls = this.stableClasses(parent)[0];
@@ -1974,6 +2157,7 @@
                 const markers = Array.from(parent.querySelectorAll("label[for],[data-testid],[data-cy]"))
                     .filter(node => node !== element && !node.contains(element) && !element.contains(node)).slice(0, 12);
                 for (const marker of markers) {
+                yield;
                     const attr = ["for", "data-testid", "data-cy"].find(name => marker.getAttribute(name));
                     if (!attr) continue;
                     const css = base + ":has(" + marker.tagName.toLowerCase() + "[" + attr + '="' +
@@ -1990,12 +2174,17 @@
         },
 
         buildDetailedCandidates: function (element, candidates, snapshot) {
+            return this.drainAnalysisSteps(this.buildDetailedCandidatesSteps(element, candidates, snapshot));
+        },
+
+        buildDetailedCandidatesSteps: function* (element, candidates, snapshot) {
+            yield;
             const out = [];
             const byKey = new Map();
             const query = value => this.matchingClones(value, snapshot);
             const original = snapshot.map.get(element);
-            const visible = this.isVisible(original);
-            const clickable = this.isClickable(original);
+            const visible = this.analysisVisible(original);
+            const clickable = this.analysisClickable(original);
             const add = (category, type, value, base, rationale, evidence = {}) => {
                 if (!value) return;
                 const key = this.canonicalLocatorKey({ type, value });
@@ -2029,6 +2218,7 @@
             const tag = element.tagName.toLowerCase();
             const attrs = ["id", "name", "type", "placeholder", "aria-label", "title", "role", "data-testid", "data-test-id", "data-cy", "value", "autocomplete"];
             for (const attr of attrs) {
+                yield;
                 const value = element.getAttribute(attr);
                 if (!value || (attr === "id" && this.isProbablyGenerated(value))) continue;
                 const lit = this.xpathLiteral(value);
@@ -2041,6 +2231,7 @@
             }
 
             for (const child of Array.from(element.querySelectorAll("*"))) {
+                yield;
                 const childText = (child.innerText || child.textContent || "").trim().replace(/\s+/g, " ");
                 if (childText && childText.length <= 60) {
                     const childTag = child.tagName.toLowerCase();
@@ -2048,18 +2239,20 @@
                     add("Child element text", "XPATH", xpath, 64, "Identifies the target tag using descendant <" + childTag + "> text: " + childText);
                 }
                 for (const attr of ["data-testid", "data-test-id", "data-cy", "name", "aria-label", "title", "id"]) {
+                yield;
                     const val = child.getAttribute(attr);
                     if (!val || (attr === "id" && this.isProbablyGenerated(val))) continue;
                     const xpath = "//" + tag + "[.//" + child.tagName.toLowerCase() + "[@" + attr + "=" + this.xpathLiteral(val) + "]]";
                     add("Child element attribute", "XPATH", xpath, attr.startsWith("data-") ? 74 : 60, "Uses descendant <" + child.tagName.toLowerCase() + "> @" + attr + "=" + val + " as a distinguishing clue.");
                 }
             }
-            this.addChildTextCandidates(element, add, query);
+            yield* this.addChildTextCandidatesSteps(element, add, query);
 
             const parent = element.parentElement;
             if (parent && parent.tagName.toLowerCase() !== "body" && parent.tagName.toLowerCase() !== "html") {
                 const ptag = parent.tagName.toLowerCase();
                 for (const attr of ["id", "data-testid", "data-test-id", "data-cy", "name", "aria-label", "role"]) {
+                yield;
                     const val = parent.getAttribute(attr);
                     if (!val || (attr === "id" && this.isProbablyGenerated(val))) continue;
                     const xp = "//" + ptag + "[@" + attr + "=" + this.xpathLiteral(val) + "]//" + tag;
@@ -2084,16 +2277,16 @@
                 if (placeholder) add("Reusable form locator", "XPATH", "//" + tag + "[@placeholder=" + this.xpathLiteral(placeholder) + "]", 78, "Uses placeholder; useful when stable, but may change with UX copy or localization.");
             }
 
-            this.addMeaningfulRelationships(element, add, query);
-            this.addCompositeCandidates(element, add, query);
-            this.addAssociatedLabelCandidates(element, add, query);
-            this.addNearestContainerCandidates(element, add, query);
-            this.addSiblingTextCandidates(element, add, query);
-            this.addRepeatedItemCandidates(element, add, query);
-            this.addRelationalCssCandidates(element, add, query);
-            this.addContainerCandidates(element, add);
-            this.addReusableSectionCandidates(element, add, query);
-            this.addDeepParentCandidates(element, add, query);
+            yield* this.addMeaningfulRelationshipsSteps(element, add, query);
+            yield* this.addCompositeCandidatesSteps(element, add, query);
+            yield* this.addAssociatedLabelCandidatesSteps(element, add, query);
+            yield* this.addNearestContainerCandidatesSteps(element, add, query);
+            yield* this.addSiblingTextCandidatesSteps(element, add, query);
+            yield* this.addRepeatedItemCandidatesSteps(element, add, query);
+            yield* this.addRelationalCssCandidatesSteps(element, add, query);
+            yield* this.addContainerCandidatesSteps(element, add);
+            yield* this.addReusableSectionCandidatesSteps(element, add, query);
+            yield* this.addDeepParentCandidatesSteps(element, add, query);
             return out.sort((a,b) => b.score-a.score || Number(b.unique)-Number(a.unique));
         },
 

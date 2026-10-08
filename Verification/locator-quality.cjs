@@ -59,7 +59,7 @@ check(context.window.__seleniumLocatorInspector === currentInspector, 'reinjecti
 let cleaned = 0;
 const upgradeContext = {...context, window: { __seleniumLocatorInspector: {stop: () => cleaned++, stopRectangleSelection: () => cleaned++, clearLocatorHighlights: () => cleaned++} }};
 vm.runInNewContext(source, upgradeContext);
-check(cleaned === 3 && upgradeContext.window.__seleniumLocatorInspector.version === 34, 'upgrades stale inspector and cleans old listeners');
+check(cleaned === 3 && upgradeContext.window.__seleniumLocatorInspector.version === 36, 'upgrades stale inspector and cleans old listeners');
 const html = `<html><body><section><h2>Billing</h2><div class="field"><div class="price">$123.45</div><label for="billing">Email address</label><input id="billing" type="text"/></div></section><section><h2>Shipping</h2><div class="field"><label for="shipping">Email address</label><input id="shipping" type="text"/></div></section></body></html>`;
 const f = fixture(html);
 const target = f.nodes.find(n => n.id === 'billing');
@@ -136,7 +136,7 @@ check(meaningful.score > mutable.score, 'meaningful relationship outranks mutabl
 check(!ambiguous.unique && ambiguous.matches === 2 && ambiguous.score <= 49, 'ambiguity explicitly measured and capped');
 check(stable.selectedTargetMatched && stable.matches === 1, 'selected identity checked separately from match count');
 check(mutable.risk.includes('field value'), 'mutable value risk explained');
-inspector.testCandidateResilience = () => {};
+inspector.testCandidateResilienceSteps = function* () {};
 const ranked = inspector.rankCandidates([ambiguous,positional,stable], target,snapshot);
 check(ranked[0].value === stable.value && ranked[0].recommendation.includes('Best overall'), 'rankings select stable unique recommendation');
 const code = inspector.generateRecommendedCode(stable, []);
@@ -175,11 +175,11 @@ const builder = Object.create(inspector);
 for (const helper of ['addChildTextCandidates','addCompositeCandidates','addAssociatedLabelCandidates',
   'addNearestContainerCandidates','addSiblingTextCandidates','addRepeatedItemCandidates',
   'addRelationalCssCandidates','addContainerCandidates','addReusableSectionCandidates','addDeepParentCandidates'])
-  builder[helper] = () => {};
+  builder[helper+'Steps'] = function* () {};
 const leaf = {tagName:'INPUT',id:'',children:[],textContent:'',parentElement:null,
   getAttribute:()=>null,querySelectorAll:()=>[],closest:()=>null};
 builder.matchingClones = () => [leaf];
-builder.addMeaningfulRelationships = (node,add) => {
+builder.addMeaningfulRelationshipsSteps = function* (node,add) {
   add('Meaningful container','XPATH','.'+required,90,'Meaningful field container.',{marker:'Email field is required'});
   add('Meaningful container','XPATH',required,90,'Meaningful field container.',{marker:'Email field is required'});
 };
